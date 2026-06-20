@@ -40,8 +40,13 @@
     return Math.min(Math.max(n(value), min), max);
   }
 
-  function validate(input) {
+  function hasValue(value) {
+    return value !== "" && value !== undefined && value !== null;
+  }
+
+  function validationDetails(input) {
     const errors = [];
+    const warnings = [];
     moneyFields.forEach((field) => {
       if (input[field] !== "" && input[field] !== undefined && n(input[field]) < 0) {
         errors.push(`${field}: no acepta valores negativos.`);
@@ -54,25 +59,59 @@
       const occupancy = n(input.expectedOccupancy);
       if (occupancy < 0 || occupancy > 100) errors.push("La ocupacion esperada debe estar entre 0% y 100%.");
     }
+    if (input.discountMode === "percent" && n(input.discountValue) > 100) {
+      warnings.push("El descuento porcentual se limita a 100%.");
+    }
     if (!input.responsible) errors.push("El responsable es obligatorio.");
     if (!input.equipmentType) errors.push("El tipo de equipo es obligatorio.");
-    return errors;
+    if (input.operationType === "new" && n(input.supplierCost) <= 0) {
+      errors.push("El costo del proveedor debe ser mayor que cero para equipo nuevo.");
+    }
+    if (input.operationType === "used") {
+      const originalCost = n(input.originalCost);
+      const depreciation = n(input.accumulatedDepreciation);
+      const bookValue = n(input.bookValue);
+      const hasDepreciation = hasValue(input.accumulatedDepreciation);
+      const canCalculateBookValue = originalCost > 0 && hasDepreciation && depreciation >= 0 && originalCost - depreciation > 0;
+      if (bookValue <= 0 && !canCalculateBookValue) {
+        errors.push("El seminuevo requiere valor en libros o costo original y depreciacion suficientes para calcularlo.");
+      }
+      if (originalCost > 0 && depreciation > 0 && bookValue > 0 && Math.abs(originalCost - depreciation - bookValue) > 1) {
+        warnings.push("Costo original, depreciacion acumulada y valor en libros no coinciden.");
+      }
+      if (originalCost > 0 && depreciation > originalCost) {
+        warnings.push("La depreciacion acumulada es mayor que el costo original.");
+      }
+    }
+    return { errors, warnings };
+  }
+
+  function validate(input) {
+    return validationDetails(input).errors;
+  }
+
+  function isActive(row) {
+    const active = row.active ?? row.EstadoActivo ?? row.estadoActivo;
+    return active === undefined || active === true || String(active).toLowerCase() === "activo";
+  }
+
+  function sameText(left, right) {
+    return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
   }
 
   function resolveConfig(input, configRows) {
     const type = input.operationType === "used" ? "used" : "new";
     const defaults = DEFAULT_CONFIG[type];
     if (!Array.isArray(configRows)) return { ...defaults };
-    const match = configRows.find((row) => {
-      const active = row.active === undefined || row.active === true || String(row.active).toLowerCase() === "activo";
-      return active && String(row.equipmentType || "").toLowerCase() === String(input.equipmentType || "").toLowerCase();
-    });
+    const activeRows = configRows.filter((row) => isActive(row) && sameText(row.operationType, type));
+    const match = activeRows.find((row) => sameText(row.equipmentType, input.equipmentType))
+      || activeRows.find((row) => sameText(row.equipmentType, "Todos"));
     if (!match) return { ...defaults };
     return {
-      minimumPct: n(match.minimumPct) || defaults.minimumPct,
-      targetPct: n(match.targetPct) || defaults.targetPct,
-      highPct: n(match.highPct) || defaults.highPct,
-      defaultWarrantyPct: n(match.defaultWarrantyPct) || defaults.defaultWarrantyPct,
+      minimumPct: match.minimumPct !== "" && match.minimumPct !== undefined ? n(match.minimumPct) : defaults.minimumPct,
+      targetPct: match.targetPct !== "" && match.targetPct !== undefined ? n(match.targetPct) : defaults.targetPct,
+      highPct: match.highPct !== "" && match.highPct !== undefined ? n(match.highPct) : defaults.highPct,
+      defaultWarrantyPct: match.defaultWarrantyPct !== "" && match.defaultWarrantyPct !== undefined ? n(match.defaultWarrantyPct) : defaults.defaultWarrantyPct,
       defaultCurrency: match.defaultCurrency || defaults.defaultCurrency,
     };
   }
@@ -82,13 +121,6 @@
     if (mode === "percentBase") return base * pct(amount);
     if (mode === "percentPrice") return n(proposedPrice) * pct(amount);
     return amount;
-  }
-
-  function solvePrice(baseWithoutPriceCosts, marginPct, priceCostPct) {
-    const targetMultiplier = 1 + pct(marginPct);
-    const denominator = 1 - pct(priceCostPct) * targetMultiplier;
-    if (denominator <= 0) return 0;
-    return baseWithoutPriceCosts * targetMultiplier / denominator;
   }
 
   function newBase(input, proposedPrice) {
@@ -117,7 +149,7 @@
     const originalCost = n(input.originalCost);
     let depreciation = n(input.accumulatedDepreciation);
     let bookValue = n(input.bookValue);
-    if (originalCost > 0 && depreciation > 0 && bookValue === 0) bookValue = Math.max(originalCost - depreciation, 0);
+    if (originalCost > 0 && hasValue(input.accumulatedDepreciation) && bookValue === 0) bookValue = Math.max(originalCost - depreciation, 0);
     if (originalCost > 0 && bookValue > 0 && depreciation === 0) depreciation = Math.max(originalCost - bookValue, 0);
     return { originalCost, depreciation, bookValue };
   }
@@ -148,21 +180,47 @@
     return input.operationType === "used" ? usedBase(input, proposedPrice) : newBase(input, proposedPrice);
   }
 
-  function priceSet(baseData, margins) {
-    const baseWithoutPriceCosts = baseData.baseBeforeVariable;
-    const priceCostPct = baseData.priceCostPct;
+  function solvePriceForMargin(input, marginPct) {
+    const multiplier = 1 + pct(marginPct);
+    const baseAtZero = baseFor(input, 0).economicBase;
+    if (baseAtZero <= 0 || multiplier <= 0) return 0;
+
+    const difference = (price) => {
+      const base = baseFor(input, price).economicBase;
+      return price - (base * multiplier);
+    };
+
+    let low = 0;
+    let high = Math.max(baseAtZero * multiplier, 1);
+    let guard = 0;
+    while (difference(high) < 0 && guard < 80) {
+      high *= 2;
+      guard += 1;
+      if (!Number.isFinite(high) || high > 1e15) return 0;
+    }
+    if (difference(high) < 0) return 0;
+
+    for (let index = 0; index < 100; index += 1) {
+      const mid = (low + high) / 2;
+      if (difference(mid) >= 0) high = mid;
+      else low = mid;
+    }
+    return round(high);
+  }
+
+  function priceSet(input, margins) {
     return {
-      minimumPrice: round(solvePrice(baseWithoutPriceCosts, margins.minimumPct, priceCostPct)),
-      targetPrice: round(solvePrice(baseWithoutPriceCosts, margins.targetPct, priceCostPct)),
-      highPrice: round(solvePrice(baseWithoutPriceCosts, margins.highPct, priceCostPct)),
+      minimumPrice: solvePriceForMargin(input, margins.minimumPct),
+      targetPrice: solvePriceForMargin(input, margins.targetPct),
+      highPrice: solvePriceForMargin(input, margins.highPct),
     };
   }
 
   function discountValues(input, proposedPrice) {
-    const raw = Math.max(n(input.discountValue), 0);
+    const raw = input.discountMode === "percent" ? clamp(input.discountValue, 0, 100) : Math.max(n(input.discountValue), 0);
     const amount = input.discountMode === "percent" ? proposedPrice * pct(raw) : raw;
     const percent = proposedPrice > 0 ? (amount / proposedPrice) * 100 : 0;
-    return { discountAmount: round(Math.min(amount, proposedPrice)), discountPercent: round(percent) };
+    return { discountAmount: round(Math.min(amount, proposedPrice)), discountPercent: round(Math.min(percent, 100)) };
   }
 
   function marketPosition(input, finalPrice) {
@@ -190,17 +248,15 @@
   function calculate(rawInput, configRows) {
     const input = { ...rawInput };
     const margins = resolveConfig(input, configRows);
-    const initialBase = baseFor(input, n(input.proposedPrice));
-    const prices = priceSet(initialBase, margins);
+    const prices = priceSet(input, margins);
     const proposedPrice = n(input.proposedPrice) > 0 ? n(input.proposedPrice) : prices.targetPrice;
     const base = baseFor(input, proposedPrice);
-    const adjustedPrices = priceSet(base, margins);
     const discount = discountValues(input, proposedPrice);
     const finalPrice = round(Math.max(proposedPrice - discount.discountAmount, 0));
     const expectedProfit = round(finalPrice - base.economicBase);
     const profitOnCostPct = base.economicBase > 0 ? round((expectedProfit / base.economicBase) * 100) : 0;
     const marginOnSalePct = finalPrice > 0 ? round((expectedProfit / finalPrice) * 100) : 0;
-    const maxDiscountAllowed = round(Math.max(proposedPrice - adjustedPrices.minimumPrice, 0));
+    const maxDiscountAllowed = round(Math.max(proposedPrice - prices.minimumPrice, 0));
 
     const historicalRentalResult = round(n(input.historicalRentalIncome) - n(input.historicalMaintenance) - n(input.otherHistoricalCosts));
     const originalCost = base.originalCost || n(input.originalCost);
@@ -221,13 +277,15 @@
     else if (profitOnCostPct >= margins.minimumPct) trafficLight = "Requiere autorizacion";
 
     const comparison = { effectiveMonthlyIncome, monthlyRentFlow, futureRentFlow, keepRentingValue, sellNowValue, difference, monthsToRecoverSale };
+    const details = validationDetails(input);
 
     return {
       input,
-      errors: validate(input),
+      errors: details.errors,
+      warnings: details.warnings,
       margins,
       ...base,
-      ...adjustedPrices,
+      ...prices,
       proposedPrice: round(proposedPrice),
       finalPrice,
       ...discount,
@@ -245,5 +303,5 @@
     };
   }
 
-  return { DEFAULT_CONFIG, calculate, validate, round, n };
+  return { DEFAULT_CONFIG, calculate, validate, validationDetails, resolveConfig, round, n };
 });

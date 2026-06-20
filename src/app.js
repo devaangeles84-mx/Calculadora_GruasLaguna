@@ -8,9 +8,13 @@ let configRows = [];
 let historyRows = [];
 let lastResult = null;
 let dirty = false;
+let userTouched = new Set();
+let currentUser = null;
 
 const form = $("#analysisForm");
 const formMessage = $("#formMessage");
+const loginForm = $("#loginForm");
+const loginMessage = $("#loginMessage");
 
 function iconRefresh() {
   if (window.lucide) window.lucide.createIcons();
@@ -53,13 +57,74 @@ async function api(action, options = {}) {
   const url = `/.netlify/functions/api?action=${encodeURIComponent(action)}`;
   const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     ...options,
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok || json.ok === false) {
-    throw new Error(json.error || "No fue posible comunicarse con el servicio.");
+    const error = new Error(json.error || "No fue posible comunicarse con el servicio.");
+    error.status = response.status;
+    throw error;
   }
   return json;
+}
+
+function showLogin(message = "") {
+  document.body.classList.remove("auth-loading", "authenticated");
+  document.body.classList.add("logged-out");
+  currentUser = null;
+  if (message) showMessage(loginMessage, message, "warning");
+  else hideMessage(loginMessage);
+  iconRefresh();
+}
+
+function showApp(user) {
+  currentUser = user;
+  document.body.classList.remove("auth-loading", "logged-out");
+  document.body.classList.add("authenticated");
+  $("#currentUserName").textContent = user.name;
+  setValue("responsible", user.name);
+  iconRefresh();
+}
+
+async function checkSession() {
+  try {
+    const data = await api("session");
+    showApp(data.user);
+    return data.user;
+  } catch (error) {
+    showLogin(error.status === 401 ? "Sesion vencida o no iniciada." : "No fue posible validar la sesion.");
+    return null;
+  }
+}
+
+async function login(event) {
+  event.preventDefault();
+  hideMessage(loginMessage);
+  $("#loginBtn").disabled = true;
+  try {
+    const body = {
+      username: $("#loginUsername").value,
+      password: $("#loginPassword").value,
+    };
+    const data = await api("login", { method: "POST", body: JSON.stringify(body) });
+    $("#loginPassword").value = "";
+    showApp(data.user);
+    await loadConfig();
+    calculateAndRender();
+  } catch (error) {
+    showMessage(loginMessage, error.status === 401 ? "Usuario o contrasena incorrectos." : error.message, "error");
+  } finally {
+    $("#loginBtn").disabled = false;
+  }
+}
+
+async function logout() {
+  try {
+    await api("logout", { method: "POST", body: "{}" });
+  } finally {
+    showLogin("Sesion cerrada correctamente.");
+  }
 }
 
 async function loadConfig() {
@@ -70,10 +135,16 @@ async function loadConfig() {
     fillDatalist("brands", data.catalogs?.brands || []);
     fillDatalist("responsibles", data.catalogs?.responsibles || []);
     $("#connectionStatus").textContent = "Conectado a configuracion";
+    applyConfigDefaults();
   } catch (error) {
+    if (error.status === 401) {
+      showLogin("Sesion vencida. Ingrese nuevamente.");
+      return;
+    }
     configRows = [];
     $("#connectionStatus").textContent = "Sin Apps Script configurado";
     showMessage(formMessage, "Se usaran porcentajes iniciales. Para guardar o consultar historial falta configurar Apps Script en Netlify.", "warning");
+    applyConfigDefaults();
   }
 }
 
@@ -83,7 +154,31 @@ function updateOperationVisibility() {
   $$(".operation-used").forEach((node) => node.classList.toggle("hidden", type !== "used"));
 }
 
+function applyConfigDefaults() {
+  const data = formData();
+  const config = GruasCalculator.resolveConfig(data, configRows);
+  const operation = $("#operationType").value;
+  if (!userTouched.has("currency")) {
+    setValue("currency", config.defaultCurrency || "MXN");
+  }
+  const warrantyField = operation === "used" ? "usedWarrantyValue" : "newWarrantyValue";
+  const warrantyModeField = operation === "used" ? "usedWarrantyMode" : "newWarrantyMode";
+  if (!userTouched.has(warrantyField)) {
+    setValue(warrantyField, config.defaultWarrantyPct || "");
+  }
+  if (!userTouched.has(warrantyModeField) && !userTouched.has(warrantyField)) {
+    setValue(warrantyModeField, "percentBase");
+  }
+}
+
+function syncDiscountInput() {
+  if ($("#discountMode").value === "percent" && Number($("#discountValue").value) > 100) {
+    setValue("discountValue", "100");
+  }
+}
+
 function calculateAndRender() {
+  syncDiscountInput();
   const data = formData();
   lastResult = GruasCalculator.calculate(data, configRows);
   renderResults(lastResult);
@@ -92,9 +187,10 @@ function calculateAndRender() {
 }
 
 function renderValidation(result) {
-  const blocking = result.errors.filter((error) => error.includes("obligatorio") || error.includes("tipo de cambio"));
-  if (blocking.length) {
-    showMessage(formMessage, blocking.join(" "), "warning");
+  if (result.errors.length) {
+    showMessage(formMessage, result.errors.join(" "), "error");
+  } else if (result.warnings.length) {
+    showMessage(formMessage, result.warnings.join(" "), "warning");
   } else if (!formMessage.classList.contains("warning")) {
     hideMessage(formMessage);
   }
@@ -135,11 +231,14 @@ function renderResults(result) {
 function clearForm(force = false) {
   if (!force && dirty && !confirm("Hay datos capturados. Desea limpiar el analisis?")) return;
   form.reset();
+  userTouched = new Set();
   setValue("analysisDate", today());
   setValue("exchangeRate", "1");
   setValue("operationType", "new");
   setValue("currency", "MXN");
+  if (currentUser) setValue("responsible", currentUser.name);
   updateOperationVisibility();
+  applyConfigDefaults();
   dirty = false;
   calculateAndRender();
   hideMessage(formMessage);
@@ -147,18 +246,20 @@ function clearForm(force = false) {
 
 function payload(status = "complete") {
   const result = calculateAndRender();
+  if (currentUser) {
+    result.input.responsible = currentUser.name;
+  }
   return {
     status,
-    input: result.input,
-    calculated: result,
+    input: { ...result.input, responsible: currentUser?.name || result.input.responsible },
+    calculated: { ...result, input: { ...result.input, responsible: currentUser?.name || result.input.responsible } },
   };
 }
 
 async function saveAnalysis() {
   const result = calculateAndRender();
-  const missingCore = result.errors.filter((error) => error.includes("obligatorio") || error.includes("tipo de cambio"));
-  if (missingCore.length) {
-    showMessage(formMessage, missingCore.join(" "), "error");
+  if (result.errors.length) {
+    showMessage(formMessage, result.errors.join(" "), "error");
     return;
   }
   $("#saveBtn").disabled = true;
@@ -169,6 +270,10 @@ async function saveAnalysis() {
     dirty = false;
     showMessage(formMessage, `Analisis guardado con folio ${data.folio}.`, "success");
   } catch (error) {
+    if (error.status === 401) {
+      showLogin("Sesion vencida. Ingrese nuevamente.");
+      return;
+    }
     showMessage(formMessage, `${error.message} Verifique GAS_WEBAPP_URL y GAS_EXECUTION_TOKEN en Netlify.`, "error");
   } finally {
     $("#saveBtn").disabled = false;
@@ -186,6 +291,11 @@ async function openHistory() {
     historyRows = data.items || [];
     renderHistory();
   } catch (error) {
+    if (error.status === 401) {
+      $("#historyModal").close();
+      showLogin("Sesion vencida. Ingrese nuevamente.");
+      return;
+    }
     historyRows = [];
     $("#historyRows").innerHTML = "";
     showMessage($("#historyMessage"), `${error.message} El historial requiere Apps Script configurado.`, "error");
@@ -244,6 +354,7 @@ function loadHistoryRow(index) {
   clearForm(true);
   Object.entries(row.input || row).forEach(([key, value]) => setValue(key, value));
   setValue("folio", "");
+  userTouched = new Set(Object.keys(row.input || row));
   updateOperationVisibility();
   calculateAndRender();
   $("#historyModal").close();
@@ -251,13 +362,25 @@ function loadHistoryRow(index) {
   showMessage(formMessage, "Analisis cargado como nueva version. Al guardar se generara un folio nuevo.", "info");
 }
 
-form.addEventListener("input", () => {
+function handleFormChange(event) {
+  if (event.target?.name) userTouched.add(event.target.name);
   dirty = true;
   updateOperationVisibility();
+  if (event.target?.name === "operationType" || event.target?.name === "equipmentType") {
+    applyConfigDefaults();
+  }
+  calculateAndRender();
+}
+
+form.addEventListener("input", handleFormChange);
+form.addEventListener("change", handleFormChange);
+loginForm.addEventListener("submit", login);
+$("#logoutBtn").addEventListener("click", logout);
+$("#operationType").addEventListener("change", () => {
+  updateOperationVisibility();
+  applyConfigDefaults();
   calculateAndRender();
 });
-
-$("#operationType").addEventListener("change", updateOperationVisibility);
 $("#calculateBtn").addEventListener("click", calculateAndRender);
 $("#saveBtn").addEventListener("click", saveAnalysis);
 $("#clearBtn").addEventListener("click", () => clearForm(false));
@@ -283,7 +406,15 @@ $("#historyRows").addEventListener("click", (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   setValue("analysisDate", today());
   updateOperationVisibility();
+  const user = await checkSession();
+  if (!user) {
+    calculateAndRender();
+    iconRefresh();
+    return;
+  }
+  setValue("responsible", user.name);
   await loadConfig();
+  applyConfigDefaults();
   calculateAndRender();
   iconRefresh();
 });

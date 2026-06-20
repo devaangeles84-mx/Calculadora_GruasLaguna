@@ -19,9 +19,52 @@ Crear estas variables en Site configuration > Environment variables:
 ```text
 GAS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbx_REEMPLAZAR/exec
 GAS_EXECUTION_TOKEN=un-token-largo-y-privado
+SESSION_SECRET=otro-secreto-largo-minimo-32-caracteres
+APP_USERS_JSON=[{"username":"ventas","name":"Ventas Laguna","passwordHash":"scrypt$...$..."}]
 ```
 
 Use el mismo valor de `GAS_EXECUTION_TOKEN` en Apps Script > Project Settings > Script Properties.
+
+## Usuarios y acceso
+
+La calculadora requiere inicio de sesion antes de consultar configuracion, historial o guardar analisis. La proteccion vive en `netlify/functions/api.js`, por lo que tambien bloquea llamadas directas a `/.netlify/functions/api`.
+
+No use contrasenas en texto plano. Para crear un usuario, genere primero el hash localmente:
+
+```bash
+node scripts/create-user-hash.js ventas "Ventas Laguna" "CONTRASENA_TEMPORAL"
+```
+
+El comando imprime un objeto como este:
+
+```json
+{
+  "username": "ventas",
+  "name": "Ventas Laguna",
+  "passwordHash": "scrypt$SALT_BASE64URL$HASH_BASE64URL"
+}
+```
+
+Copie uno o varios objetos dentro de `APP_USERS_JSON` en Netlify:
+
+```json
+[
+  {
+    "username": "ventas",
+    "name": "Ventas Laguna",
+    "passwordHash": "scrypt$SALT_BASE64URL$HASH_BASE64URL"
+  },
+  {
+    "username": "gerencia",
+    "name": "Gerencia Comercial",
+    "passwordHash": "scrypt$OTRO_SALT$OTRO_HASH"
+  }
+]
+```
+
+`SESSION_SECRET` firma las sesiones. Use un valor largo y privado, distinto de `GAS_EXECUTION_TOKEN`. Las sesiones duran maximo 8 horas y se guardan en cookie `HttpOnly`, `SameSite=Strict` y `Secure` en produccion.
+
+El responsable del analisis siempre se toma de la sesion autenticada. Aunque alguien modifique el formulario o la peticion desde el navegador, la funcion de Netlify sobrescribe el responsable antes de enviar los datos a Apps Script.
 
 ## Crear Google Sheets y Apps Script
 
@@ -63,8 +106,10 @@ Catalogo, Valor, EstadoActivo
 
 ## Configuracion inicial de margenes
 
-- Equipo nuevo: minimo 12%, objetivo 18%, alto 25%.
-- Seminuevo: minimo 18%, objetivo 25%, alto 35%.
+- Fila general `Todos` + `new`: minimo 12%, objetivo 18%, alto 25%.
+- Fila general `Todos` + `used`: minimo 18%, objetivo 25%, alto 35%.
+
+Puede agregar filas mas especificas por `TipoEquipo` y `TipoOperacion`; la app busca primero coincidencia exacta y luego la fila `Todos` de la misma operacion.
 
 Los porcentajes representan utilidad sobre costo:
 
@@ -92,6 +137,7 @@ Ejecutar:
 
 ```bash
 node tests/calculator.test.js
+node tests/auth.test.js
 ```
 
 Casos cubiertos:
@@ -108,6 +154,13 @@ Casos cubiertos:
 - Comparacion donde conviene rentar.
 - Campos vacios y valores cero.
 - Error de comunicacion con Apps Script cuando faltan variables.
+- Peticiones sin sesion devuelven 401.
+- Credenciales incorrectas son rechazadas.
+- Inicio de sesion valido genera cookie.
+- Sesion valida permite `config`, `history` y `save`.
+- Sesion vencida es rechazada.
+- Cerrar sesion elimina la cookie.
+- No se puede falsificar el responsable.
 
 ## Notas de operacion
 

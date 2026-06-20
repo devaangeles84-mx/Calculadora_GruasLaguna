@@ -68,8 +68,8 @@ function ensureSheets_() {
   const catalogs = ensureSheet_(ss, SHEETS.catalogs, CATALOG_HEADERS);
   if (config.getLastRow() === 1) {
     config.getRange(2, 1, 2, CONFIG_HEADERS.length).setValues([
-      ["Equipo nuevo", "new", 12, 18, 25, 2, "MXN", "Activo"],
-      ["Seminuevo proveniente de renta", "used", 18, 25, 35, 3, "MXN", "Activo"],
+      ["Todos", "new", 12, 18, 25, 2, "MXN", "Activo"],
+      ["Todos", "used", 18, 25, 35, 3, "MXN", "Activo"],
     ]);
   }
   if (catalogs.getLastRow() === 1) {
@@ -103,8 +103,8 @@ function readConfig_() {
   const active = rows.filter((row) => String(row.EstadoActivo || "").toLowerCase() !== "inactivo");
   if (!active.length) {
     return [
-      { equipmentType: "Equipo nuevo", operationType: "new", minimumPct: 12, targetPct: 18, highPct: 25, defaultWarrantyPct: 2, defaultCurrency: "MXN", active: true },
-      { equipmentType: "Seminuevo proveniente de renta", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", active: true },
+      { equipmentType: "Todos", operationType: "new", minimumPct: 12, targetPct: 18, highPct: 25, defaultWarrantyPct: 2, defaultCurrency: "MXN", active: true },
+      { equipmentType: "Todos", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", active: true },
     ];
   }
   return active.map((row) => ({
