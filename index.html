@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calculadora de Precio de Venta y Rentabilidad de Maquinaria | Gruas Laguna</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">GL</div>
+        <div>
+          <strong>Gruas Laguna</strong>
+          <span>Herramientas comerciales</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary" id="newAnalysisBtn" type="button">
+          <i data-lucide="file-plus-2"></i>
+          Nuevo analisis
+        </button>
+        <button class="btn btn-secondary" id="historyBtn" type="button">
+          <i data-lucide="history"></i>
+          Historial
+        </button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="title-row">
+        <div>
+          <p class="eyebrow">Resultados antes de IVA</p>
+          <h1>Calculadora de precio de venta y rentabilidad de maquinaria</h1>
+        </div>
+        <div class="status-pill" id="connectionStatus">Configuracion local</div>
+      </section>
+
+      <div class="workspace">
+        <form class="form-stack" id="analysisForm" novalidate>
+          <div class="message hidden" id="formMessage"></div>
+
+          <details class="section" open>
+            <summary>
+              <span>1. Datos del equipo</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>
+                Folio automatico
+                <input name="folio" id="folio" placeholder="Se asigna al guardar" readonly />
+              </label>
+              <label>
+                Fecha del analisis
+                <input name="analysisDate" id="analysisDate" type="date" required />
+              </label>
+              <label>
+                Responsable
+                <input name="responsible" id="responsible" list="responsibles" required />
+              </label>
+              <label>
+                Tipo de operacion
+                <select name="operationType" id="operationType" required>
+                  <option value="new">Equipo nuevo</option>
+                  <option value="used">Seminuevo proveniente de renta</option>
+                </select>
+              </label>
+              <label>
+                Numero economico
+                <input name="economicNumber" id="economicNumber" />
+              </label>
+              <label>
+                Tipo de equipo
+                <input name="equipmentType" id="equipmentType" list="equipmentTypes" required />
+              </label>
+              <label>
+                Marca
+                <input name="brand" id="brand" list="brands" />
+              </label>
+              <label>
+                Modelo
+                <input name="model" id="model" />
+              </label>
+              <label>
+                Ano
+                <input name="year" id="year" type="number" min="1900" max="2100" />
+              </label>
+              <label>
+                Numero de serie
+                <input name="serialNumber" id="serialNumber" />
+              </label>
+              <label>
+                Horas actuales
+                <input name="currentHours" id="currentHours" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Condicion
+                <select name="condition" id="condition">
+                  <option value="Excelente">Excelente</option>
+                  <option value="Buena">Buena</option>
+                  <option value="Regular">Regular</option>
+                </select>
+              </label>
+              <label class="span-2">
+                Observaciones
+                <textarea name="notes" id="notes" rows="3"></textarea>
+              </label>
+            </div>
+          </details>
+
+          <details class="section operation-new" open>
+            <summary>
+              <span>2. Informacion financiera de equipo nuevo</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>
+                Costo del proveedor
+                <input class="money-input" name="supplierCost" id="supplierCost" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Moneda
+                <select name="currency" id="currency">
+                  <option value="MXN">MXN</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+              <label>
+                Tipo de cambio
+                <input name="exchangeRate" id="exchangeRate" type="number" min="0" step="0.0001" value="1" />
+              </label>
+              <label>
+                Flete internacional
+                <input class="money-input" name="internationalFreight" id="internationalFreight" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Seguro de transporte
+                <input class="money-input" name="transportInsurance" id="transportInsurance" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Impuestos de importacion
+                <input class="money-input" name="importTaxes" id="importTaxes" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Maniobras
+                <input class="money-input" name="maneuvers" id="maneuvers" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Transporte nacional
+                <input class="money-input" name="nationalTransport" id="nationalTransport" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Entrega al cliente
+                <input class="money-input" name="clientDelivery" id="clientDelivery" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Instalacion o puesta en marcha
+                <input class="money-input" name="installation" id="installation" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Otros costos
+                <input class="money-input" name="newOtherCosts" id="newOtherCosts" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Costos comerciales
+                <input class="money-input" name="newCommercialCosts" id="newCommercialCosts" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Comision comercial
+                <input name="newCommissionValue" id="newCommissionValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Tipo de comision
+                <select name="newCommissionMode" id="newCommissionMode">
+                  <option value="amount">Importe MXN</option>
+                  <option value="percentBase">Porcentaje sobre base</option>
+                  <option value="percentPrice">Porcentaje sobre precio propuesto</option>
+                </select>
+                <small id="newCommissionEquivalent">Equivalente: $0.00</small>
+              </label>
+              <label>
+                Reserva garantia/riesgo
+                <input name="newWarrantyValue" id="newWarrantyValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Tipo de reserva
+                <select name="newWarrantyMode" id="newWarrantyMode">
+                  <option value="amount">Importe MXN</option>
+                  <option value="percentBase">Porcentaje sobre base</option>
+                  <option value="percentPrice">Porcentaje sobre precio propuesto</option>
+                </select>
+                <small id="newWarrantyEquivalent">Equivalente: $0.00</small>
+              </label>
+            </div>
+          </details>
+
+          <details class="section operation-used">
+            <summary>
+              <span>2. Informacion financiera de seminuevo</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>
+                Fecha de adquisicion
+                <input name="acquisitionDate" id="acquisitionDate" type="date" />
+              </label>
+              <label>
+                Costo original de adquisicion
+                <input class="money-input" name="originalCost" id="originalCost" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Depreciacion acumulada
+                <input class="money-input" name="accumulatedDepreciation" id="accumulatedDepreciation" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Valor en libros
+                <input class="money-input" name="bookValue" id="bookValue" type="number" min="0" step="0.01" />
+              </label>
+            </div>
+          </details>
+
+          <details class="section operation-used">
+            <summary>
+              <span>3. Costos para poner en venta</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>Diagnostico tecnico<input class="money-input" name="diagnosticCost" id="diagnosticCost" type="number" min="0" step="0.01" /></label>
+              <label>Transporte<input class="money-input" name="usedTransport" id="usedTransport" type="number" min="0" step="0.01" /></label>
+              <label>Reparaciones<input class="money-input" name="repairs" id="repairs" type="number" min="0" step="0.01" /></label>
+              <label>Refacciones<input class="money-input" name="parts" id="parts" type="number" min="0" step="0.01" /></label>
+              <label>Pintura<input class="money-input" name="paint" id="paint" type="number" min="0" step="0.01" /></label>
+              <label>Llantas<input class="money-input" name="tires" id="tires" type="number" min="0" step="0.01" /></label>
+              <label>Baterias<input class="money-input" name="batteries" id="batteries" type="number" min="0" step="0.01" /></label>
+              <label>Mano de obra<input class="money-input" name="labor" id="labor" type="number" min="0" step="0.01" /></label>
+              <label>Limpieza y acondicionamiento<input class="money-input" name="cleaning" id="cleaning" type="number" min="0" step="0.01" /></label>
+              <label>Entrega al cliente<input class="money-input" name="usedDelivery" id="usedDelivery" type="number" min="0" step="0.01" /></label>
+              <label>Gastos comerciales<input class="money-input" name="usedCommercialCosts" id="usedCommercialCosts" type="number" min="0" step="0.01" /></label>
+              <label>Otros costos<input class="money-input" name="usedOtherCosts" id="usedOtherCosts" type="number" min="0" step="0.01" /></label>
+              <label>
+                Comision
+                <input name="usedCommissionValue" id="usedCommissionValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Tipo de comision
+                <select name="usedCommissionMode" id="usedCommissionMode">
+                  <option value="amount">Importe MXN</option>
+                  <option value="percentBase">Porcentaje sobre base</option>
+                  <option value="percentPrice">Porcentaje sobre precio propuesto</option>
+                </select>
+                <small id="usedCommissionEquivalent">Equivalente: $0.00</small>
+              </label>
+              <label>
+                Reserva garantia/riesgo
+                <input name="usedWarrantyValue" id="usedWarrantyValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Tipo de reserva
+                <select name="usedWarrantyMode" id="usedWarrantyMode">
+                  <option value="amount">Importe MXN</option>
+                  <option value="percentBase">Porcentaje sobre base</option>
+                  <option value="percentPrice">Porcentaje sobre precio propuesto</option>
+                </select>
+                <small id="usedWarrantyEquivalent">Equivalente: $0.00</small>
+              </label>
+            </div>
+          </details>
+
+          <details class="section operation-used">
+            <summary>
+              <span>4. Historial de renta</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>Meses en operacion<input name="monthsInOperation" id="monthsInOperation" type="number" min="0" step="1" /></label>
+              <label>Ingresos historicos por renta<input class="money-input" name="historicalRentalIncome" id="historicalRentalIncome" type="number" min="0" step="0.01" /></label>
+              <label>Gastos historicos de mantenimiento<input class="money-input" name="historicalMaintenance" id="historicalMaintenance" type="number" min="0" step="0.01" /></label>
+              <label>Otros costos operativos historicos<input class="money-input" name="otherHistoricalCosts" id="otherHistoricalCosts" type="number" min="0" step="0.01" /></label>
+            </div>
+          </details>
+
+          <details class="section operation-used">
+            <summary>
+              <span>5. Proyeccion de renta futura</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>Renta mensual esperada<input class="money-input" name="expectedMonthlyRent" id="expectedMonthlyRent" type="number" min="0" step="0.01" /></label>
+              <label>Ocupacion esperada (%)<input name="expectedOccupancy" id="expectedOccupancy" type="number" min="0" max="100" step="0.01" /></label>
+              <label>Mantenimiento mensual esperado<input class="money-input" name="expectedMonthlyMaintenance" id="expectedMonthlyMaintenance" type="number" min="0" step="0.01" /></label>
+              <label>Otros costos mensuales<input class="money-input" name="expectedMonthlyOtherCosts" id="expectedMonthlyOtherCosts" type="number" min="0" step="0.01" /></label>
+              <label>Periodo de evaluacion (meses)<input name="evaluationMonths" id="evaluationMonths" type="number" min="0" step="1" /></label>
+              <label>Valor estimado de venta al final<input class="money-input" name="estimatedSaleValueAfter" id="estimatedSaleValueAfter" type="number" min="0" step="0.01" /></label>
+            </div>
+          </details>
+
+          <details class="section" open>
+            <summary>
+              <span>6. Precio, descuento y mercado</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>
+                Precio propuesto
+                <input class="money-input" name="proposedPrice" id="proposedPrice" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Descuento
+                <input name="discountValue" id="discountValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                Tipo de descuento
+                <select name="discountMode" id="discountMode">
+                  <option value="amount">Importe MXN</option>
+                  <option value="percent">Porcentaje</option>
+                </select>
+                <small id="discountEquivalent">Equivalente: $0.00</small>
+              </label>
+              <label>Precio de mercado bajo<input class="money-input" name="marketLow" id="marketLow" type="number" min="0" step="0.01" /></label>
+              <label>Precio promedio de mercado<input class="money-input" name="marketAverage" id="marketAverage" type="number" min="0" step="0.01" /></label>
+              <label>Precio de mercado alto<input class="money-input" name="marketHigh" id="marketHigh" type="number" min="0" step="0.01" /></label>
+              <label>Fuente o referencia<input name="marketSource" id="marketSource" /></label>
+              <label>Fecha de consulta<input name="marketDate" id="marketDate" type="date" /></label>
+            </div>
+          </details>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" id="calculateBtn" type="button">
+              <i data-lucide="calculator"></i>
+              Calcular
+            </button>
+            <button class="btn btn-primary" id="saveBtn" type="button">
+              <i data-lucide="save"></i>
+              Guardar analisis
+            </button>
+            <button class="btn btn-secondary" id="clearBtn" type="button">
+              <i data-lucide="eraser"></i>
+              Limpiar
+            </button>
+            <button class="btn btn-secondary" id="printBtn" type="button">
+              <i data-lucide="printer"></i>
+              Imprimir / PDF
+            </button>
+          </div>
+        </form>
+
+        <aside class="results-panel" id="resultsPanel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">7. Resultados</p>
+              <h2>Resumen ejecutivo</h2>
+            </div>
+            <span class="traffic" id="trafficLight">Sin calculo</span>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><span>Base economica</span><strong id="economicBase">$0.00</strong></div>
+            <div class="metric"><span>Precio final</span><strong id="finalPrice">$0.00</strong></div>
+            <div class="metric"><span>Utilidad</span><strong id="expectedProfit">$0.00</strong></div>
+            <div class="metric"><span>Utilidad sobre costo</span><strong id="profitOnCost">0.00%</strong></div>
+          </div>
+
+          <div class="price-cards">
+            <article>
+              <span>Minimo</span>
+              <strong id="minimumPrice">$0.00</strong>
+              <small id="minimumPct">0.00%</small>
+            </article>
+            <article>
+              <span>Objetivo</span>
+              <strong id="targetPrice">$0.00</strong>
+              <small id="targetPct">0.00%</small>
+            </article>
+            <article>
+              <span>Alto</span>
+              <strong id="highPrice">$0.00</strong>
+              <small id="highPct">0.00%</small>
+            </article>
+          </div>
+
+          <dl class="result-list">
+            <div><dt>Margen sobre venta</dt><dd id="marginOnSale">0.00%</dd></div>
+            <div><dt>Descuento maximo permitido</dt><dd id="maxDiscount">$0.00</dd></div>
+            <div><dt>Resultado historico renta</dt><dd id="historicalResult">$0.00</dd></div>
+            <div><dt>Recuperacion historica</dt><dd id="historicalRecovery">0.00%</dd></div>
+            <div><dt>Recuperacion total esperada</dt><dd id="totalRecovery">0.00%</dd></div>
+            <div><dt>Vender ahora</dt><dd id="sellNowValue">$0.00</dd></div>
+            <div><dt>Mantener en renta</dt><dd id="keepRentingValue">$0.00</dd></div>
+            <div><dt>Diferencia</dt><dd id="rentVsSellDifference">$0.00</dd></div>
+            <div><dt>Meses para recuperar venta</dt><dd id="monthsToRecover">No disponible</dd></div>
+            <div><dt>Mercado</dt><dd id="marketPosition">Sin referencia</dd></div>
+          </dl>
+
+          <div class="recommendation" id="recommendation">Capture datos para calcular.</div>
+          <p class="legal">Resultados antes de IVA y sujetos a validacion financiera y comercial.</p>
+          <p class="legal">La recomendacion es orientativa y no sustituye la evaluacion de liquidez, demanda, riesgo mecanico y disponibilidad de flota.</p>
+        </aside>
+      </div>
+    </main>
+
+    <dialog class="history-modal" id="historyModal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Analisis guardados</p>
+          <h2>Historial</h2>
+        </div>
+        <button class="icon-btn" id="closeHistoryBtn" type="button" aria-label="Cerrar historial">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="history-filters">
+        <label>Buscar<input id="historySearch" placeholder="Folio, economico, marca, modelo o responsable" /></label>
+        <label>Desde<input id="historyFrom" type="date" /></label>
+        <label>Hasta<input id="historyTo" type="date" /></label>
+        <label>
+          Tipo
+          <select id="historyType">
+            <option value="">Todos</option>
+            <option value="new">Equipo nuevo</option>
+            <option value="used">Seminuevo</option>
+          </select>
+        </label>
+        <label>
+          Semaforo
+          <select id="historyTraffic">
+            <option value="">Todos</option>
+            <option value="Dentro de politica">Dentro de politica</option>
+            <option value="Requiere autorizacion">Requiere autorizacion</option>
+            <option value="Fuera de politica">Fuera de politica</option>
+          </select>
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Equipo</th>
+              <th>Responsable</th>
+              <th>Precio final</th>
+              <th>Semaforo</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="historyRows"></tbody>
+        </table>
+      </div>
+      <div class="message hidden" id="historyMessage"></div>
+    </dialog>
+
+    <datalist id="equipmentTypes"></datalist>
+    <datalist id="brands"></datalist>
+    <datalist id="responsibles"></datalist>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="src/calculations.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>
