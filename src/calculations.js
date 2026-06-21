@@ -7,7 +7,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
   const DEFAULT_CONFIG = {
     new: { minimumPct: 12, targetPct: 18, highPct: 25, defaultWarrantyPct: 2, defaultCurrency: "MXN" },
-    used: { minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN" },
+    used: { minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", usefulLifeYears: 10, residualPercentage: 30 },
   };
 
   const moneyFields = [
@@ -21,6 +21,7 @@
     "expectedMonthlyRent", "expectedOccupancy", "expectedMonthlyMaintenance",
     "expectedMonthlyOtherCosts", "evaluationMonths", "estimatedSaleValueAfter", "proposedPrice",
     "discountValue", "marketLow", "marketAverage", "marketHigh", "monthsInOperation",
+    "usefulLifeYears", "residualPercentage", "manualBookValue",
   ];
 
   function n(value) {
@@ -42,6 +43,25 @@
 
   function hasValue(value) {
     return value !== "" && value !== undefined && value !== null;
+  }
+
+  function isManualBookValueEnabled(input) {
+    return input.useManualBookValue === true || input.useManualBookValue === "true" || input.useManualBookValue === "on";
+  }
+
+  function parseDate(value) {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function completeMonthsBetween(startValue, endValue) {
+    const start = parseDate(startValue);
+    const end = parseDate(endValue);
+    if (!start || !end || start > end) return 0;
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    if (end.getDate() < start.getDate()) months -= 1;
+    return Math.max(months, 0);
   }
 
   function validationDetails(input) {
@@ -69,18 +89,27 @@
     }
     if (input.operationType === "used") {
       const originalCost = n(input.originalCost);
-      const depreciation = n(input.accumulatedDepreciation);
-      const bookValue = n(input.bookValue);
-      const hasDepreciation = hasValue(input.accumulatedDepreciation);
-      const canCalculateBookValue = originalCost > 0 && hasDepreciation && depreciation >= 0 && originalCost - depreciation > 0;
-      if (bookValue <= 0 && !canCalculateBookValue) {
-        errors.push("El seminuevo requiere valor en libros o costo original y depreciacion suficientes para calcularlo.");
+      const acquisitionDate = parseDate(input.acquisitionDate);
+      const analysisDate = parseDate(input.analysisDate);
+      if (originalCost <= 0) errors.push("El costo original debe ser mayor que cero para seminuevo.");
+      if (!input.acquisitionDate) errors.push("La fecha de adquisicion o puesta en operacion es obligatoria para seminuevo.");
+      if (acquisitionDate && analysisDate && acquisitionDate > analysisDate) {
+        errors.push("La fecha de adquisicion no puede ser posterior a la fecha del analisis.");
       }
-      if (originalCost > 0 && depreciation > 0 && bookValue > 0 && Math.abs(originalCost - depreciation - bookValue) > 1) {
+      if (n(input.usefulLifeYears) <= 0) errors.push("La vida util estimada debe ser mayor que cero.");
+      if (!hasValue(input.residualPercentage) || n(input.residualPercentage) < 0 || n(input.residualPercentage) > 100) {
+        errors.push("El valor residual debe estar entre 0% y 100%.");
+      }
+      if (isManualBookValueEnabled(input)) {
+        if (n(input.manualBookValue) < 0) errors.push("El valor manual autorizado no puede ser negativo.");
+        if (!String(input.manualAdjustmentReason || "").trim()) {
+          errors.push("El motivo del ajuste manual es obligatorio.");
+        }
+        warnings.push("Existe un ajuste manual autorizado; el valor manual se usara como base del analisis.");
+      }
+      if (originalCost > 0 && hasValue(input.accumulatedDepreciation) && hasValue(input.bookValue)
+        && Math.abs(originalCost - n(input.accumulatedDepreciation) - n(input.bookValue)) > 1) {
         warnings.push("Costo original, depreciacion acumulada y valor en libros no coinciden.");
-      }
-      if (originalCost > 0 && depreciation > originalCost) {
-        warnings.push("La depreciacion acumulada es mayor que el costo original.");
       }
     }
     return { errors, warnings };
@@ -113,6 +142,8 @@
       highPct: match.highPct !== "" && match.highPct !== undefined ? n(match.highPct) : defaults.highPct,
       defaultWarrantyPct: match.defaultWarrantyPct !== "" && match.defaultWarrantyPct !== undefined ? n(match.defaultWarrantyPct) : defaults.defaultWarrantyPct,
       defaultCurrency: match.defaultCurrency || defaults.defaultCurrency,
+      usefulLifeYears: match.usefulLifeYears !== "" && match.usefulLifeYears !== undefined ? n(match.usefulLifeYears) : defaults.usefulLifeYears,
+      residualPercentage: match.residualPercentage !== "" && match.residualPercentage !== undefined ? n(match.residualPercentage) : defaults.residualPercentage,
     };
   }
 
@@ -145,7 +176,45 @@
     };
   }
 
-  function usedBookValues(input) {
+  function depreciationEstimate(input, config) {
+    const originalCost = n(input.originalCost);
+    const usefulLifeYears = hasValue(input.usefulLifeYears) ? n(input.usefulLifeYears) : n(config.usefulLifeYears) || DEFAULT_CONFIG.used.usefulLifeYears;
+    const residualPercentage = hasValue(input.residualPercentage) ? n(input.residualPercentage) : n(config.residualPercentage) || DEFAULT_CONFIG.used.residualPercentage;
+    const safeResidualPercentage = clamp(residualPercentage, 0, 100);
+    const elapsedMonths = completeMonthsBetween(input.acquisitionDate, input.analysisDate);
+    const residualValue = round(originalCost * pct(safeResidualPercentage));
+    const depreciableBase = round(Math.max(originalCost - residualValue, 0));
+    const usefulLifeMonths = usefulLifeYears > 0 ? usefulLifeYears * 12 : 0;
+    const rawMonthlyDepreciation = usefulLifeMonths > 0 ? depreciableBase / usefulLifeMonths : 0;
+    const monthlyDepreciation = round(rawMonthlyDepreciation);
+    const estimatedDepreciation = round(Math.min(rawMonthlyDepreciation * elapsedMonths, depreciableBase));
+    const automaticBookValue = round(Math.max(originalCost - estimatedDepreciation, residualValue));
+    const manualEnabled = isManualBookValueEnabled(input);
+    const manualBookValue = manualEnabled ? n(input.manualBookValue) : 0;
+    const selectedBookValue = manualEnabled ? manualBookValue : automaticBookValue;
+
+    return {
+      depreciationMethod: "Lineal interno",
+      acquisitionDate: input.acquisitionDate || "",
+      analysisDate: input.analysisDate || "",
+      usefulLifeYears,
+      residualPercentage: safeResidualPercentage,
+      elapsedMonths,
+      elapsedYears: round(elapsedMonths / 12),
+      residualValue,
+      depreciableBase,
+      monthlyDepreciation,
+      estimatedDepreciation,
+      automaticBookValue,
+      manualBookValueEnabled: manualEnabled,
+      manualBookValue,
+      manualAdjustmentReason: input.manualAdjustmentReason || "",
+      selectedBookValue,
+      depreciationDisclaimer: "Estimacion interna para analisis comercial; no representa un valor contable o fiscal oficial",
+    };
+  }
+
+  function legacyBookValues(input) {
     const originalCost = n(input.originalCost);
     let depreciation = n(input.accumulatedDepreciation);
     let bookValue = n(input.bookValue);
@@ -154,8 +223,28 @@
     return { originalCost, depreciation, bookValue };
   }
 
-  function usedBase(input, proposedPrice) {
-    const values = usedBookValues(input);
+  function usedBookValues(input, config) {
+    const estimate = depreciationEstimate(input, config);
+    if (n(input.originalCost) > 0 && input.acquisitionDate && input.analysisDate) {
+      return {
+        originalCost: n(input.originalCost),
+        depreciation: estimate.estimatedDepreciation,
+        bookValue: estimate.selectedBookValue,
+        ...estimate,
+      };
+    }
+    const legacy = legacyBookValues(input);
+    return {
+      ...estimate,
+      ...legacy,
+      automaticBookValue: legacy.bookValue,
+      selectedBookValue: legacy.bookValue,
+      depreciation: legacy.depreciation,
+    };
+  }
+
+  function usedBase(input, proposedPrice, config) {
+    const values = usedBookValues(input, config);
     const reconditioning = [
       "diagnosticCost", "usedTransport", "repairs", "parts", "paint", "tires", "batteries",
       "labor", "cleaning", "usedDelivery", "usedCommercialCosts", "usedOtherCosts",
@@ -176,17 +265,18 @@
     };
   }
 
-  function baseFor(input, proposedPrice) {
-    return input.operationType === "used" ? usedBase(input, proposedPrice) : newBase(input, proposedPrice);
+  function baseFor(input, proposedPrice, config) {
+    return input.operationType === "used" ? usedBase(input, proposedPrice, config || DEFAULT_CONFIG.used) : newBase(input, proposedPrice);
   }
 
   function solvePriceForMargin(input, marginPct) {
     const multiplier = 1 + pct(marginPct);
-    const baseAtZero = baseFor(input, 0).economicBase;
+    const config = resolveConfig(input, input.__configRows);
+    const baseAtZero = baseFor(input, 0, config).economicBase;
     if (baseAtZero <= 0 || multiplier <= 0) return 0;
 
     const difference = (price) => {
-      const base = baseFor(input, price).economicBase;
+      const base = baseFor(input, price, config).economicBase;
       return price - (base * multiplier);
     };
 
@@ -248,9 +338,10 @@
   function calculate(rawInput, configRows) {
     const input = { ...rawInput };
     const margins = resolveConfig(input, configRows);
+    input.__configRows = configRows;
     const prices = priceSet(input, margins);
     const proposedPrice = n(input.proposedPrice) > 0 ? n(input.proposedPrice) : prices.targetPrice;
-    const base = baseFor(input, proposedPrice);
+    const base = baseFor(input, proposedPrice, margins);
     const discount = discountValues(input, proposedPrice);
     const finalPrice = round(Math.max(proposedPrice - discount.discountAmount, 0));
     const expectedProfit = round(finalPrice - base.economicBase);
@@ -280,7 +371,7 @@
     const details = validationDetails(input);
 
     return {
-      input,
+      input: Object.fromEntries(Object.entries(input).filter(([key]) => key !== "__configRows")),
       errors: details.errors,
       warnings: details.warnings,
       margins,

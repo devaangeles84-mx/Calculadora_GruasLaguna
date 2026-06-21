@@ -239,7 +239,7 @@
             </summary>
             <div class="section-grid">
               <label>
-                Fecha de adquisicion
+                Fecha de adquisicion o puesta en operacion
                 <input name="acquisitionDate" id="acquisitionDate" type="date" />
               </label>
               <label>
@@ -247,12 +247,45 @@
                 <input class="money-input" name="originalCost" id="originalCost" type="number" min="0" step="0.01" />
               </label>
               <label>
-                Depreciacion acumulada
-                <input class="money-input" name="accumulatedDepreciation" id="accumulatedDepreciation" type="number" min="0" step="0.01" />
+                Vida util estimada en anos
+                <input name="usefulLifeYears" id="usefulLifeYears" type="number" min="0" step="0.01" />
               </label>
               <label>
-                Valor en libros
-                <input class="money-input" name="bookValue" id="bookValue" type="number" min="0" step="0.01" />
+                Valor residual (%)
+                <input name="residualPercentage" id="residualPercentage" type="number" min="0" max="100" step="0.01" />
+              </label>
+              <label>
+                Meses transcurridos
+                <input name="elapsedMonths" id="elapsedMonths" type="number" readonly />
+              </label>
+              <label>
+                Depreciacion acumulada estimada
+                <input class="money-input" name="accumulatedDepreciation" id="accumulatedDepreciation" type="number" readonly />
+              </label>
+              <label>
+                Valor en libros estimado
+                <input class="money-input" name="bookValue" id="bookValue" type="number" readonly />
+              </label>
+              <label>
+                Metodo utilizado
+                <input name="depreciationMethod" id="depreciationMethod" value="Lineal interno" readonly />
+              </label>
+              <label class="checkbox-field span-2">
+                <input name="useManualBookValue" id="useManualBookValue" type="checkbox" />
+                Usar valor manual autorizado
+              </label>
+              <label class="manual-book-value hidden">
+                Valor manual autorizado
+                <input class="money-input" name="manualBookValue" id="manualBookValue" type="number" min="0" step="0.01" />
+              </label>
+              <label class="manual-book-value span-2 hidden">
+                Motivo del ajuste manual
+                <textarea name="manualAdjustmentReason" id="manualAdjustmentReason" rows="2"></textarea>
+              </label>
+              <p class="field-note span-2">Estimacion interna para analisis comercial; no representa un valor contable o fiscal oficial.</p>
+              <label class="hidden">
+                Valor en libros heredado
+                <input class="money-input" name="legacyBookValue" id="legacyBookValue" type="number" />
               </label>
             </div>
           </details>
@@ -419,6 +452,14 @@
           <dl class="result-list">
             <div><dt>Margen sobre venta</dt><dd id="marginOnSale">0.00%</dd></div>
             <div><dt>Descuento maximo permitido</dt><dd id="maxDiscount">$0.00</dd></div>
+            <div class="operation-used"><dt>Costo original</dt><dd id="usedOriginalCost">$0.00</dd></div>
+            <div class="operation-used"><dt>Antiguedad</dt><dd id="usedElapsedAge">0 meses / 0.00 anos</dd></div>
+            <div class="operation-used"><dt>Depreciacion estimada</dt><dd id="usedEstimatedDepreciation">$0.00</dd></div>
+            <div class="operation-used"><dt>Valor residual</dt><dd id="usedResidualValue">$0.00</dd></div>
+            <div class="operation-used"><dt>Valor automatico</dt><dd id="usedAutomaticBookValue">$0.00</dd></div>
+            <div class="operation-used"><dt>Valor manual</dt><dd id="usedManualBookValue">No aplica</dd></div>
+            <div class="operation-used"><dt>Valor usado en analisis</dt><dd id="usedSelectedBookValue">$0.00</dd></div>
+            <div class="operation-used"><dt>Parametros</dt><dd id="usedDepreciationParams">10 anos / 30.00%</dd></div>
             <div><dt>Resultado historico renta</dt><dd id="historicalResult">$0.00</dd></div>
             <div><dt>Recuperacion historica</dt><dd id="historicalRecovery">0.00%</dd></div>
             <div><dt>Recuperacion total esperada</dt><dd id="totalRecovery">0.00%</dd></div>

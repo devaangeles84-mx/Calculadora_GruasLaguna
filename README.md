@@ -95,7 +95,7 @@ Folio, FechaHora, Version, Estado, Usuario, FechaAnalisis, TipoOperacion, Numero
 `Configuracion`:
 
 ```text
-TipoEquipo, TipoOperacion, PorcentajeMinimo, PorcentajeObjetivo, PorcentajeAlto, PorcentajeGarantiaPredeterminado, MonedaPredeterminada, EstadoActivo
+TipoEquipo, TipoOperacion, PorcentajeMinimo, PorcentajeObjetivo, PorcentajeAlto, PorcentajeGarantiaPredeterminado, MonedaPredeterminada, EstadoActivo, VidaUtilAnios, ValorResidualPorcentaje
 ```
 
 `Catalogos`:
@@ -107,7 +107,7 @@ Catalogo, Valor, EstadoActivo
 ## Configuracion inicial de margenes
 
 - Fila general `Todos` + `new`: minimo 12%, objetivo 18%, alto 25%.
-- Fila general `Todos` + `used`: minimo 18%, objetivo 25%, alto 35%.
+- Fila general `Todos` + `used`: minimo 18%, objetivo 25%, alto 35%, vida util 10 anos, residual 30%.
 
 Puede agregar filas mas especificas por `TipoEquipo` y `TipoOperacion`; la app busca primero coincidencia exacta y luego la fila `Todos` de la misma operacion.
 
@@ -116,6 +116,35 @@ Los porcentajes representan utilidad sobre costo:
 ```text
 Precio = base economica x (1 + porcentaje)
 ```
+
+## Valor en libros estimado para seminuevos
+
+Para equipos seminuevos la app calcula una referencia interna conservadora. Es una estimacion interna para analisis comercial; no representa un valor contable o fiscal oficial.
+
+Politica predeterminada:
+
+- Metodo: depreciacion lineal interna.
+- Vida util: 10 anos.
+- Valor residual minimo: 30% del costo original.
+- Fecha inicial: fecha de adquisicion o puesta en operacion.
+- Fecha final: fecha del analisis.
+
+Formulas:
+
+```text
+Valor residual = costo original x porcentaje residual
+Base depreciable = costo original - valor residual
+Depreciacion mensual = base depreciable / (vida util en anos x 12)
+Meses transcurridos = meses completos entre fecha inicial y fecha de analisis
+Depreciacion acumulada = depreciacion mensual x meses transcurridos
+Valor en libros estimado = costo original - depreciacion acumulada
+```
+
+La depreciacion acumulada nunca supera la base depreciable y el valor estimado nunca baja del valor residual.
+
+Puede configurar `VidaUtilAnios` y `ValorResidualPorcentaje` por `TipoEquipo` + `used`. La app busca primero una coincidencia exacta, despues `Todos` + `used`, y finalmente usa 10 anos / 30% como respaldo interno.
+
+Existe una opcion excepcional `Usar valor manual autorizado`. Si se activa, exige valor manual y motivo; la app conserva el valor automatico, guarda el motivo y usa el valor manual como base economica.
 
 ## Desarrollo local
 
@@ -154,6 +183,11 @@ Casos cubiertos:
 - Comparacion donde conviene rentar.
 - Campos vacios y valores cero.
 - Error de comunicacion con Apps Script cuando faltan variables.
+- Depreciacion interna de seminuevos.
+- Valor residual minimo.
+- Configuracion especifica y respaldo `Todos` + `used`.
+- Ajuste manual autorizado con motivo.
+- Rechazo de ajuste manual sin motivo.
 - Peticiones sin sesion devuelven 401.
 - Credenciales incorrectas son rechazadas.
 - Inicio de sesion valido genera cookie.

@@ -128,7 +128,8 @@ const tests = [
   }],
   ["Validacion seminuevo requiere valor en libros calculable", () => {
     const r = calculate({ ...baseInput, operationType: "used", originalCost: 0, accumulatedDepreciation: 0, bookValue: 0 });
-    assert.ok(r.errors.some((error) => error.includes("valor en libros")));
+    assert.ok(r.errors.some((error) => error.includes("costo original")));
+    assert.ok(r.errors.some((error) => error.includes("fecha de adquisicion")));
   }],
   ["Advertencia por valor en libros inconsistente", () => {
     const r = calculate({ ...baseInput, operationType: "used", originalCost: 900000, accumulatedDepreciation: 300000, bookValue: 500000 });
@@ -139,6 +140,130 @@ const tests = [
     nearly(r.discountPercent, 100);
     nearly(r.discountAmount, 1200000);
     nearly(r.finalPrice, 0);
+  }],
+  ["Depreciacion interna ejemplo obligatorio", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+    });
+    nearly(r.residualValue, 300000);
+    nearly(r.depreciableBase, 700000);
+    nearly(r.monthlyDepreciation, 5833.33);
+    nearly(r.estimatedDepreciation, 350000);
+    nearly(r.automaticBookValue, 650000);
+    nearly(r.selectedBookValue, 650000);
+  }],
+  ["Equipo con antiguedad superior a vida util respeta residual", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2015-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+    });
+    nearly(r.estimatedDepreciation, 700000);
+    nearly(r.automaticBookValue, 300000);
+    nearly(r.selectedBookValue, 300000);
+  }],
+  ["Configuracion especifica por tipo de equipo para depreciacion", () => {
+    const config = [
+      { equipmentType: "Todos", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", usefulLifeYears: 10, residualPercentage: 30, active: true },
+      { equipmentType: "Grua", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", usefulLifeYears: 5, residualPercentage: 20, active: true },
+    ];
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+    }, config);
+    nearly(r.usefulLifeYears, 5);
+    nearly(r.residualPercentage, 20);
+    nearly(r.automaticBookValue, 200000);
+  }],
+  ["Respaldo Todos used para depreciacion", () => {
+    const config = [
+      { equipmentType: "Todos", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", usefulLifeYears: 8, residualPercentage: 35, active: true },
+    ];
+    const r = calculate({
+      ...baseInput,
+      equipmentType: "Plataforma",
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2022-06-20",
+      analysisDate: "2026-06-20",
+    }, config);
+    nearly(r.usefulLifeYears, 8);
+    nearly(r.residualPercentage, 35);
+  }],
+  ["Fecha de adquisicion futura es rechazada", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2027-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+    });
+    assert.ok(r.errors.some((error) => error.includes("posterior")));
+  }],
+  ["Ajuste manual con motivo usa valor manual", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+      useManualBookValue: "on",
+      manualBookValue: 720000,
+      manualAdjustmentReason: "Autorizacion comercial por condicion excepcional",
+    });
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.manualBookValueEnabled, true);
+    nearly(r.automaticBookValue, 650000);
+    nearly(r.selectedBookValue, 720000);
+    nearly(r.bookValue, 720000);
+  }],
+  ["Ajuste manual sin motivo es rechazado", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+      useManualBookValue: "on",
+      manualBookValue: 720000,
+      manualAdjustmentReason: "",
+    });
+    assert.ok(r.errors.some((error) => error.includes("motivo")));
+  }],
+  ["Recalcula al cambiar fechas o parametros", () => {
+    const base = {
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 10,
+      residualPercentage: 30,
+    };
+    const fiveYears = calculate(base);
+    const sixYears = calculate({ ...base, analysisDate: "2027-06-20" });
+    const differentResidual = calculate({ ...base, residualPercentage: 40 });
+    assert.ok(sixYears.automaticBookValue < fiveYears.automaticBookValue);
+    assert.ok(differentResidual.automaticBookValue > fiveYears.automaticBookValue);
   }],
   ["Error de comunicacion Apps Script verificable", async () => {
     const api = require("../netlify/functions/api");

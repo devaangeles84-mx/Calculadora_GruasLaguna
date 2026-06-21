@@ -39,6 +39,11 @@ function setValue(name, value) {
   if (field) field.value = value ?? "";
 }
 
+function setChecked(name, checked) {
+  const field = form.elements[name];
+  if (field) field.checked = Boolean(checked);
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -152,6 +157,8 @@ function updateOperationVisibility() {
   const type = $("#operationType").value;
   $$(".operation-new").forEach((node) => node.classList.toggle("hidden", type !== "new"));
   $$(".operation-used").forEach((node) => node.classList.toggle("hidden", type !== "used"));
+  const manualEnabled = $("#useManualBookValue")?.checked;
+  $$(".manual-book-value").forEach((node) => node.classList.toggle("hidden", !manualEnabled));
 }
 
 function applyConfigDefaults() {
@@ -168,6 +175,14 @@ function applyConfigDefaults() {
   }
   if (!userTouched.has(warrantyModeField) && !userTouched.has(warrantyField)) {
     setValue(warrantyModeField, "percentBase");
+  }
+  if (operation === "used") {
+    if (!userTouched.has("usefulLifeYears")) {
+      setValue("usefulLifeYears", config.usefulLifeYears || 10);
+    }
+    if (!userTouched.has("residualPercentage")) {
+      setValue("residualPercentage", config.residualPercentage ?? 30);
+    }
   }
 }
 
@@ -197,6 +212,10 @@ function renderValidation(result) {
 }
 
 function renderResults(result) {
+  setValue("elapsedMonths", result.elapsedMonths || 0);
+  setValue("accumulatedDepreciation", result.estimatedDepreciation || 0);
+  setValue("bookValue", result.automaticBookValue || 0);
+  setValue("depreciationMethod", result.depreciationMethod || "Lineal interno");
   $("#economicBase").textContent = formatMoney.format(result.economicBase);
   $("#finalPrice").textContent = formatMoney.format(result.finalPrice);
   $("#expectedProfit").textContent = formatMoney.format(result.expectedProfit);
@@ -209,6 +228,14 @@ function renderResults(result) {
   $("#highPct").textContent = formatPct(result.margins.highPct);
   $("#marginOnSale").textContent = formatPct(result.marginOnSalePct);
   $("#maxDiscount").textContent = formatMoney.format(result.maxDiscountAllowed);
+  $("#usedOriginalCost").textContent = formatMoney.format(result.originalCost || 0);
+  $("#usedElapsedAge").textContent = `${result.elapsedMonths || 0} meses / ${Number(result.elapsedYears || 0).toFixed(2)} anos`;
+  $("#usedEstimatedDepreciation").textContent = formatMoney.format(result.estimatedDepreciation || 0);
+  $("#usedResidualValue").textContent = formatMoney.format(result.residualValue || 0);
+  $("#usedAutomaticBookValue").textContent = formatMoney.format(result.automaticBookValue || 0);
+  $("#usedManualBookValue").textContent = result.manualBookValueEnabled ? formatMoney.format(result.manualBookValue || 0) : "No aplica";
+  $("#usedSelectedBookValue").textContent = formatMoney.format(result.selectedBookValue || result.bookValue || 0);
+  $("#usedDepreciationParams").textContent = `${Number(result.usefulLifeYears || 0).toFixed(2)} anos / ${formatPct(result.residualPercentage || 0)}`;
   $("#historicalResult").textContent = formatMoney.format(result.historicalRentalResult);
   $("#historicalRecovery").textContent = formatPct(result.historicalRecoveryPct);
   $("#totalRecovery").textContent = formatPct(result.totalRecoveryPct);
@@ -232,6 +259,7 @@ function clearForm(force = false) {
   if (!force && dirty && !confirm("Hay datos capturados. Desea limpiar el analisis?")) return;
   form.reset();
   userTouched = new Set();
+  setChecked("useManualBookValue", false);
   setValue("analysisDate", today());
   setValue("exchangeRate", "1");
   setValue("operationType", "new");
@@ -353,6 +381,7 @@ function loadHistoryRow(index) {
   if (!row) return;
   clearForm(true);
   Object.entries(row.input || row).forEach(([key, value]) => setValue(key, value));
+  setChecked("useManualBookValue", row.input?.useManualBookValue === true || row.input?.useManualBookValue === "on");
   setValue("folio", "");
   userTouched = new Set(Object.keys(row.input || row));
   updateOperationVisibility();

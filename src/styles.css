@@ -348,6 +348,28 @@ textarea { resize: vertical; }
 
 .span-2 { grid-column: span 2; }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.checkbox-field input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+
+.field-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 4px solid var(--accent);
+  background: #fffaf0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .form-actions {
   position: sticky;
   bottom: 0;

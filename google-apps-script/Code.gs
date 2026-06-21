@@ -13,12 +13,16 @@ const ANALYSIS_HEADERS = [
   "Utilidad", "UtilidadSobreCosto", "MargenSobreVenta", "ResultadoHistoricoRenta",
   "RecuperacionHistorica", "RecuperacionTotal", "VenderAhora", "MantenerEnRenta",
   "DiferenciaVenderRentar", "MesesRecuperacionVenta", "Semaforo", "Recomendacion",
-  "Mercado", "ActualizadoEn",
+  "Mercado", "ActualizadoEn", "MetodoDepreciacion", "FechaInicialDepreciacion",
+  "VidaUtilAnios", "ValorResidualPorcentaje", "ValorResidual", "MesesTranscurridos",
+  "DepreciacionEstimada", "ValorAutomatico", "AjusteManual", "ValorManual",
+  "MotivoAjusteManual", "ValorUtilizadoAnalisis",
 ];
 
 const CONFIG_HEADERS = [
   "TipoEquipo", "TipoOperacion", "PorcentajeMinimo", "PorcentajeObjetivo", "PorcentajeAlto",
   "PorcentajeGarantiaPredeterminado", "MonedaPredeterminada", "EstadoActivo",
+  "VidaUtilAnios", "ValorResidualPorcentaje",
 ];
 
 const CATALOG_HEADERS = ["Catalogo", "Valor", "EstadoActivo"];
@@ -68,8 +72,8 @@ function ensureSheets_() {
   const catalogs = ensureSheet_(ss, SHEETS.catalogs, CATALOG_HEADERS);
   if (config.getLastRow() === 1) {
     config.getRange(2, 1, 2, CONFIG_HEADERS.length).setValues([
-      ["Todos", "new", 12, 18, 25, 2, "MXN", "Activo"],
-      ["Todos", "used", 18, 25, 35, 3, "MXN", "Activo"],
+      ["Todos", "new", 12, 18, 25, 2, "MXN", "Activo", "", ""],
+      ["Todos", "used", 18, 25, 35, 3, "MXN", "Activo", 10, 30],
     ]);
   }
   if (catalogs.getLastRow() === 1) {
@@ -89,12 +93,17 @@ function ensureSheets_() {
 
 function ensureSheet_(ss, name, headers) {
   const sheet = ss.getSheetByName(name) || ss.insertSheet(name);
-  const current = sheet.getRange(1, 1, 1, Math.max(headers.length, sheet.getLastColumn() || 1)).getValues()[0];
-  const needsHeader = headers.some((header, index) => current[index] !== header);
-  if (needsHeader) {
+  if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+    return sheet;
   }
+  const current = sheet.getRange(1, 1, 1, Math.max(headers.length, sheet.getLastColumn())).getValues()[0].filter(String);
+  const missing = headers.filter((header) => current.indexOf(header) === -1);
+  if (missing.length) {
+    sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
+  }
+  sheet.setFrozenRows(1);
   return sheet;
 }
 
@@ -104,7 +113,7 @@ function readConfig_() {
   if (!active.length) {
     return [
       { equipmentType: "Todos", operationType: "new", minimumPct: 12, targetPct: 18, highPct: 25, defaultWarrantyPct: 2, defaultCurrency: "MXN", active: true },
-      { equipmentType: "Todos", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", active: true },
+      { equipmentType: "Todos", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, defaultWarrantyPct: 3, defaultCurrency: "MXN", usefulLifeYears: 10, residualPercentage: 30, active: true },
     ];
   }
   return active.map((row) => ({
@@ -115,6 +124,8 @@ function readConfig_() {
     highPct: Number(row.PorcentajeAlto) || 0,
     defaultWarrantyPct: Number(row.PorcentajeGarantiaPredeterminado) || 0,
     defaultCurrency: row.MonedaPredeterminada || "MXN",
+    usefulLifeYears: Number(row.VidaUtilAnios) || 10,
+    residualPercentage: Number(row.ValorResidualPorcentaje) || 30,
     active: true,
   }));
 }
@@ -215,6 +226,18 @@ function saveAnalysis_(body) {
       calculated.recommendation || "",
       calculated.marketPosition || "",
       now,
+      calculated.depreciationMethod || "",
+      calculated.acquisitionDate || input.acquisitionDate || "",
+      calculated.usefulLifeYears || "",
+      calculated.residualPercentage || "",
+      calculated.residualValue || 0,
+      calculated.elapsedMonths || 0,
+      calculated.estimatedDepreciation || 0,
+      calculated.automaticBookValue || 0,
+      calculated.manualBookValueEnabled ? "Si" : "No",
+      calculated.manualBookValue || 0,
+      calculated.manualAdjustmentReason || "",
+      calculated.selectedBookValue || calculated.bookValue || 0,
     ];
     sheet.appendRow(row);
     return { folio: folio, version: version };
