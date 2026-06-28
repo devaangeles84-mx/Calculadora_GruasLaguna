@@ -1,0 +1,15 @@
+{
+  "name": "calculadora-gruas-laguna",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calculadora de cotizaciones y rentabilidad de maquinaria para Gruas Laguna.",
+  "scripts": {
+    "dev": "npx netlify dev",
+    "test": "node tests/calculator.test.js && node tests/auth.test.js",
+    "test:calculator": "node tests/calculator.test.js",
+    "test:auth": "node tests/auth.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

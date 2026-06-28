@@ -3,3 +3,5 @@
 .env.*.local
 .netlify
 node_modules
+outputs/apps-script-migration/
+outputs/apps-script-migration.zip

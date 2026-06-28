@@ -159,6 +159,8 @@ function updateOperationVisibility() {
   $$(".operation-used").forEach((node) => node.classList.toggle("hidden", type !== "used"));
   const manualEnabled = $("#useManualBookValue")?.checked;
   $$(".manual-book-value").forEach((node) => node.classList.toggle("hidden", !manualEnabled));
+  const futureManualEnabled = $("#useManualFutureSaleValue")?.checked;
+  $$(".manual-future-value").forEach((node) => node.classList.toggle("hidden", !futureManualEnabled));
 }
 
 function applyConfigDefaults() {
@@ -177,12 +179,8 @@ function applyConfigDefaults() {
     setValue(warrantyModeField, "percentBase");
   }
   if (operation === "used") {
-    if (!userTouched.has("usefulLifeYears")) {
-      setValue("usefulLifeYears", config.usefulLifeYears || 10);
-    }
-    if (!userTouched.has("residualPercentage")) {
-      setValue("residualPercentage", config.residualPercentage ?? 30);
-    }
+    setValue("usefulLifeYears", config.usefulLifeYears || 10);
+    setValue("residualPercentage", config.residualPercentage ?? 30);
   }
 }
 
@@ -216,6 +214,10 @@ function renderResults(result) {
   setValue("accumulatedDepreciation", result.estimatedDepreciation || 0);
   setValue("bookValue", result.automaticBookValue || 0);
   setValue("depreciationMethod", result.depreciationMethod || "Lineal interno");
+  setValue("futureEvaluationDate", result.futureEvaluationDate || "");
+  setValue("projectedElapsedAge", `${result.projectedElapsedMonths || 0} meses / ${Number(result.projectedElapsedYears || 0).toFixed(2)} anos`);
+  setValue("futureResidualValue", result.futureResidualValue || 0);
+  setValue("estimatedSaleValueAfter", result.automaticFutureSaleValue || 0);
   $("#economicBase").textContent = formatMoney.format(result.economicBase);
   $("#finalPrice").textContent = formatMoney.format(result.finalPrice);
   $("#expectedProfit").textContent = formatMoney.format(result.expectedProfit);
@@ -260,7 +262,9 @@ function clearForm(force = false) {
   form.reset();
   userTouched = new Set();
   setChecked("useManualBookValue", false);
+  setChecked("useManualFutureSaleValue", false);
   setValue("analysisDate", today());
+  setValue("quoteDate", today());
   setValue("exchangeRate", "1");
   setValue("operationType", "new");
   setValue("currency", "MXN");
@@ -382,6 +386,7 @@ function loadHistoryRow(index) {
   clearForm(true);
   Object.entries(row.input || row).forEach(([key, value]) => setValue(key, value));
   setChecked("useManualBookValue", row.input?.useManualBookValue === true || row.input?.useManualBookValue === "on");
+  setChecked("useManualFutureSaleValue", row.input?.useManualFutureSaleValue === true || row.input?.useManualFutureSaleValue === "on");
   setValue("folio", "");
   userTouched = new Set(Object.keys(row.input || row));
   updateOperationVisibility();
@@ -392,7 +397,9 @@ function loadHistoryRow(index) {
 }
 
 function handleFormChange(event) {
-  if (event.target?.name) userTouched.add(event.target.name);
+  if (event.target?.name && !["usefulLifeYears", "residualPercentage"].includes(event.target.name)) {
+    userTouched.add(event.target.name);
+  }
   dirty = true;
   updateOperationVisibility();
   if (event.target?.name === "operationType" || event.target?.name === "equipmentType") {
@@ -415,7 +422,29 @@ $("#saveBtn").addEventListener("click", saveAnalysis);
 $("#clearBtn").addEventListener("click", () => clearForm(false));
 $("#printBtn").addEventListener("click", () => {
   calculateAndRender();
+  document.body.classList.remove("quote-printing");
+  document.body.classList.add("internal-printing");
   window.print();
+});
+function openQuotePreview() {
+  const result = calculateAndRender();
+  const input = { ...formData(), folio: $("#folio").value };
+  const model = GruasQuote.buildClientQuoteModel(input, result);
+  $("#quotePreview").innerHTML = GruasQuote.renderClientQuoteHtml(model);
+  $("#quoteModal").showModal();
+  iconRefresh();
+}
+
+$("#quoteBtn").addEventListener("click", openQuotePreview);
+$("#closeQuoteBtn").addEventListener("click", () => $("#quoteModal").close());
+$("#printQuoteBtn").addEventListener("click", () => {
+  calculateAndRender();
+  document.body.classList.remove("internal-printing");
+  document.body.classList.add("quote-printing");
+  window.print();
+});
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("quote-printing", "internal-printing");
 });
 $("#newAnalysisBtn").addEventListener("click", () => clearForm(false));
 $("#historyBtn").addEventListener("click", openHistory);
@@ -434,6 +463,7 @@ $("#historyRows").addEventListener("click", (event) => {
 
 document.addEventListener("DOMContentLoaded", async () => {
   setValue("analysisDate", today());
+  setValue("quoteDate", today());
   updateOperationVisibility();
   const user = await checkSession();
   if (!user) {

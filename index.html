@@ -248,11 +248,11 @@
               </label>
               <label>
                 Vida util estimada en anos
-                <input name="usefulLifeYears" id="usefulLifeYears" type="number" min="0" step="0.01" />
+                <input name="usefulLifeYears" id="usefulLifeYears" type="number" min="0" step="0.01" readonly />
               </label>
               <label>
                 Valor residual (%)
-                <input name="residualPercentage" id="residualPercentage" type="number" min="0" max="100" step="0.01" />
+                <input name="residualPercentage" id="residualPercentage" type="number" min="0" max="100" step="0.01" readonly />
               </label>
               <label>
                 Meses transcurridos
@@ -281,6 +281,14 @@
               <label class="manual-book-value span-2 hidden">
                 Motivo del ajuste manual
                 <textarea name="manualAdjustmentReason" id="manualAdjustmentReason" rows="2"></textarea>
+              </label>
+              <label class="manual-book-value hidden">
+                Persona que autorizo
+                <input name="manualAuthorizedBy" id="manualAuthorizedBy" />
+              </label>
+              <label class="manual-book-value hidden">
+                Fecha de autorizacion
+                <input name="manualAuthorizationDate" id="manualAuthorizationDate" type="date" />
               </label>
               <p class="field-note span-2">Estimacion interna para analisis comercial; no representa un valor contable o fiscal oficial.</p>
               <label class="hidden">
@@ -343,7 +351,11 @@
               <i data-lucide="chevron-down"></i>
             </summary>
             <div class="section-grid">
-              <label>Meses en operacion<input name="monthsInOperation" id="monthsInOperation" type="number" min="0" step="1" /></label>
+              <label>
+                Meses efectivos en operacion/renta (informativo)
+                <input name="monthsInOperation" id="monthsInOperation" type="number" min="0" step="1" />
+                <small>No interviene en la depreciacion automatica.</small>
+              </label>
               <label>Ingresos historicos por renta<input class="money-input" name="historicalRentalIncome" id="historicalRentalIncome" type="number" min="0" step="0.01" /></label>
               <label>Gastos historicos de mantenimiento<input class="money-input" name="historicalMaintenance" id="historicalMaintenance" type="number" min="0" step="0.01" /></label>
               <label>Otros costos operativos historicos<input class="money-input" name="otherHistoricalCosts" id="otherHistoricalCosts" type="number" min="0" step="0.01" /></label>
@@ -361,7 +373,52 @@
               <label>Mantenimiento mensual esperado<input class="money-input" name="expectedMonthlyMaintenance" id="expectedMonthlyMaintenance" type="number" min="0" step="0.01" /></label>
               <label>Otros costos mensuales<input class="money-input" name="expectedMonthlyOtherCosts" id="expectedMonthlyOtherCosts" type="number" min="0" step="0.01" /></label>
               <label>Periodo de evaluacion (meses)<input name="evaluationMonths" id="evaluationMonths" type="number" min="0" step="1" /></label>
-              <label>Valor estimado de venta al final<input class="money-input" name="estimatedSaleValueAfter" id="estimatedSaleValueAfter" type="number" min="0" step="0.01" /></label>
+              <label>Fecha futura de evaluacion<input name="futureEvaluationDate" id="futureEvaluationDate" readonly /></label>
+              <label>Antiguedad proyectada<input name="projectedElapsedAge" id="projectedElapsedAge" readonly /></label>
+              <label>Valor residual<input class="money-input" name="futureResidualValue" id="futureResidualValue" readonly /></label>
+              <label>Valor automatico estimado al final<input class="money-input" name="estimatedSaleValueAfter" id="estimatedSaleValueAfter" type="number" readonly /></label>
+              <label class="checkbox-field span-2">
+                <input name="useManualFutureSaleValue" id="useManualFutureSaleValue" type="checkbox" />
+                Usar valor futuro manual autorizado
+              </label>
+              <label class="manual-future-value hidden">
+                Valor futuro manual autorizado
+                <input class="money-input" name="futureManualSaleValue" id="futureManualSaleValue" type="number" min="0" step="0.01" />
+              </label>
+              <label class="manual-future-value span-2 hidden">
+                Motivo
+                <textarea name="futureManualReason" id="futureManualReason" rows="2"></textarea>
+              </label>
+              <label class="manual-future-value hidden">
+                Persona que autoriza
+                <input name="futureManualAuthorizedBy" id="futureManualAuthorizedBy" />
+              </label>
+              <label class="manual-future-value hidden">
+                Fecha de autorizacion
+                <input name="futureManualAuthorizationDate" id="futureManualAuthorizationDate" type="date" />
+              </label>
+              <p class="field-note span-2">Estimacion comercial interna; no garantiza el precio futuro de mercado.</p>
+            </div>
+          </details>
+
+          <details class="section" open>
+            <summary>
+              <span>7. Datos de cotizacion para cliente</span>
+              <i data-lucide="chevron-down"></i>
+            </summary>
+            <div class="section-grid">
+              <label>Fecha de cotizacion<input name="quoteDate" id="quoteDate" type="date" /></label>
+              <label>Fecha de vigencia<input name="quoteValidUntil" id="quoteValidUntil" type="date" /></label>
+              <label>Nombre o razon social del cliente<input name="clientName" id="clientName" /></label>
+              <label>Nombre del contacto<input name="clientContactName" id="clientContactName" /></label>
+              <label>Telefono del cliente<input name="clientPhone" id="clientPhone" /></label>
+              <label>Correo del cliente<input name="clientEmail" id="clientEmail" type="email" /></label>
+              <label class="span-2">Descripcion comercial para el cliente<textarea name="clientDescription" id="clientDescription" rows="3"></textarea></label>
+              <label>Condiciones de pago<input name="paymentTerms" id="paymentTerms" /></label>
+              <label>Tiempo y lugar estimado de entrega<input name="deliveryEstimate" id="deliveryEstimate" /></label>
+              <label>Condiciones de garantia ofrecida<input name="clientWarrantyTerms" id="clientWarrantyTerms" /></label>
+              <label>Vigencia de la cotizacion<input name="quoteValidityText" id="quoteValidityText" /></label>
+              <label class="span-2">Observaciones comerciales para el cliente<textarea name="clientCommercialNotes" id="clientCommercialNotes" rows="2"></textarea></label>
             </div>
           </details>
 
@@ -410,7 +467,11 @@
             </button>
             <button class="btn btn-secondary" id="printBtn" type="button">
               <i data-lucide="printer"></i>
-              Imprimir / PDF
+              Imprimir análisis interno
+            </button>
+            <button class="btn btn-secondary" id="quoteBtn" type="button">
+              <i data-lucide="file-text"></i>
+              Cotización para cliente
             </button>
           </div>
         </form>
@@ -462,7 +523,11 @@
             <div class="operation-used"><dt>Parametros</dt><dd id="usedDepreciationParams">10 anos / 30.00%</dd></div>
             <div><dt>Resultado historico renta</dt><dd id="historicalResult">$0.00</dd></div>
             <div><dt>Recuperacion historica</dt><dd id="historicalRecovery">0.00%</dd></div>
-            <div><dt>Recuperacion total esperada</dt><dd id="totalRecovery">0.00%</dd></div>
+            <div>
+              <dt>Recuperacion acumulada estimada despues de la venta</dt>
+              <dd id="totalRecovery">0.00%</dd>
+            </div>
+            <div><dt>Ayuda</dt><dd class="help-text">Resultado historico neto de renta mas ingreso neto esperado por la venta, dividido entre el costo original. No representa margen contable ni ROI financiero completo.</dd></div>
             <div><dt>Vender ahora</dt><dd id="sellNowValue">$0.00</dd></div>
             <div><dt>Mantener en renta</dt><dd id="keepRentingValue">$0.00</dd></div>
             <div><dt>Diferencia</dt><dd id="rentVsSellDifference">$0.00</dd></div>
@@ -528,12 +593,32 @@
       <div class="message hidden" id="historyMessage"></div>
     </dialog>
 
+    <dialog class="quote-modal" id="quoteModal">
+      <div class="modal-header quote-preview-actions">
+        <div>
+          <p class="eyebrow">Vista previa imprimible</p>
+          <h2>Cotización para cliente</h2>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-primary" id="printQuoteBtn" type="button">
+            <i data-lucide="printer"></i>
+            Imprimir / PDF
+          </button>
+          <button class="icon-btn" id="closeQuoteBtn" type="button" aria-label="Cerrar cotizacion">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="quote-print-area" id="quotePreview"></div>
+    </dialog>
+
     <datalist id="equipmentTypes"></datalist>
     <datalist id="brands"></datalist>
     <datalist id="responsibles"></datalist>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="src/calculations.js"></script>
+    <script src="src/quote.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>

@@ -19,7 +19,7 @@
     "usedCommercialCosts", "usedCommissionValue", "usedWarrantyValue", "usedOtherCosts",
     "historicalRentalIncome", "historicalMaintenance", "otherHistoricalCosts",
     "expectedMonthlyRent", "expectedOccupancy", "expectedMonthlyMaintenance",
-    "expectedMonthlyOtherCosts", "evaluationMonths", "estimatedSaleValueAfter", "proposedPrice",
+    "expectedMonthlyOtherCosts", "evaluationMonths", "estimatedSaleValueAfter", "futureManualSaleValue", "proposedPrice",
     "discountValue", "marketLow", "marketAverage", "marketHigh", "monthsInOperation",
     "usefulLifeYears", "residualPercentage", "manualBookValue",
   ];
@@ -49,6 +49,10 @@
     return input.useManualBookValue === true || input.useManualBookValue === "true" || input.useManualBookValue === "on";
   }
 
+  function isManualFutureValueEnabled(input) {
+    return input.useManualFutureSaleValue === true || input.useManualFutureSaleValue === "true" || input.useManualFutureSaleValue === "on";
+  }
+
   function parseDate(value) {
     if (!value) return null;
     const date = new Date(`${value}T00:00:00`);
@@ -62,6 +66,16 @@
     let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
     if (end.getDate() < start.getDate()) months -= 1;
     return Math.max(months, 0);
+  }
+
+  function addMonths(dateValue, monthsToAdd) {
+    const date = parseDate(dateValue);
+    if (!date) return "";
+    const result = new Date(date);
+    const day = result.getDate();
+    result.setMonth(result.getMonth() + Math.max(Math.trunc(n(monthsToAdd)), 0));
+    if (result.getDate() < day) result.setDate(0);
+    return result.toISOString().slice(0, 10);
   }
 
   function validationDetails(input) {
@@ -101,15 +115,41 @@
         errors.push("El valor residual debe estar entre 0% y 100%.");
       }
       if (isManualBookValueEnabled(input)) {
-        if (n(input.manualBookValue) < 0) errors.push("El valor manual autorizado no puede ser negativo.");
+        if (n(input.manualBookValue) <= 0) errors.push("El valor manual autorizado debe ser mayor que cero.");
         if (!String(input.manualAdjustmentReason || "").trim()) {
           errors.push("El motivo del ajuste manual es obligatorio.");
         }
+        if (!String(input.manualAuthorizedBy || "").trim()) {
+          errors.push("La persona que autorizo el valor manual es obligatoria.");
+        }
+        if (!input.manualAuthorizationDate) {
+          errors.push("La fecha de autorizacion del valor manual es obligatoria.");
+        }
         warnings.push("Existe un ajuste manual autorizado; el valor manual se usara como base del analisis.");
+      }
+      if (isManualFutureValueEnabled(input)) {
+        if (n(input.futureManualSaleValue) <= 0) errors.push("El valor futuro manual autorizado debe ser mayor que cero.");
+        if (!String(input.futureManualReason || "").trim()) errors.push("El motivo del valor futuro manual es obligatorio.");
+        if (!String(input.futureManualAuthorizedBy || "").trim()) errors.push("La persona que autorizo el valor futuro manual es obligatoria.");
+        if (!input.futureManualAuthorizationDate) errors.push("La fecha de autorizacion del valor futuro manual es obligatoria.");
+        warnings.push("Existe un valor futuro manual autorizado; se usara en el comparativo de renta.");
       }
       if (originalCost > 0 && hasValue(input.accumulatedDepreciation) && hasValue(input.bookValue)
         && Math.abs(originalCost - n(input.accumulatedDepreciation) - n(input.bookValue)) > 1) {
         warnings.push("Costo original, depreciacion acumulada y valor en libros no coinciden.");
+      }
+    }
+    const hasMarket = ["marketLow", "marketAverage", "marketHigh"].some((field) => hasValue(input[field]) && n(input[field]) > 0);
+    if (hasMarket) {
+      const low = n(input.marketLow);
+      const average = n(input.marketAverage);
+      const high = n(input.marketHigh);
+      if (!String(input.marketSource || "").trim()) errors.push("La fuente o referencia de mercado es obligatoria cuando se captura informacion de mercado.");
+      if (!input.marketDate) errors.push("La fecha de consulta de mercado es obligatoria cuando se captura informacion de mercado.");
+      if (!(low > 0 && average > 0 && high > 0)) {
+        errors.push("Capture precio de mercado bajo, promedio y alto para validar el rango.");
+      } else if (!(low <= average && average <= high)) {
+        errors.push("El mercado debe cumplir: precio bajo <= precio promedio <= precio alto.");
       }
     }
     return { errors, warnings };
@@ -178,8 +218,8 @@
 
   function depreciationEstimate(input, config) {
     const originalCost = n(input.originalCost);
-    const usefulLifeYears = hasValue(input.usefulLifeYears) ? n(input.usefulLifeYears) : n(config.usefulLifeYears) || DEFAULT_CONFIG.used.usefulLifeYears;
-    const residualPercentage = hasValue(input.residualPercentage) ? n(input.residualPercentage) : n(config.residualPercentage) || DEFAULT_CONFIG.used.residualPercentage;
+    const usefulLifeYears = n(config.usefulLifeYears) || DEFAULT_CONFIG.used.usefulLifeYears;
+    const residualPercentage = hasValue(config.residualPercentage) ? n(config.residualPercentage) : DEFAULT_CONFIG.used.residualPercentage;
     const safeResidualPercentage = clamp(residualPercentage, 0, 100);
     const elapsedMonths = completeMonthsBetween(input.acquisitionDate, input.analysisDate);
     const residualValue = round(originalCost * pct(safeResidualPercentage));
@@ -209,6 +249,8 @@
       manualBookValueEnabled: manualEnabled,
       manualBookValue,
       manualAdjustmentReason: input.manualAdjustmentReason || "",
+      manualAuthorizedBy: input.manualAuthorizedBy || "",
+      manualAuthorizationDate: input.manualAuthorizationDate || "",
       selectedBookValue,
       depreciationDisclaimer: "Estimacion interna para analisis comercial; no representa un valor contable o fiscal oficial",
     };
@@ -322,6 +364,37 @@
     return "Dentro del mercado";
   }
 
+  function futureSaleEstimate(input, config) {
+    const originalCost = n(input.originalCost);
+    const usefulLifeYears = n(config.usefulLifeYears) || DEFAULT_CONFIG.used.usefulLifeYears;
+    const residualPercentage = hasValue(config.residualPercentage) ? n(config.residualPercentage) : DEFAULT_CONFIG.used.residualPercentage;
+    const safeResidualPercentage = clamp(residualPercentage, 0, 100);
+    const futureEvaluationDate = addMonths(input.analysisDate, input.evaluationMonths);
+    const projectedElapsedMonths = completeMonthsBetween(input.acquisitionDate, futureEvaluationDate);
+    const residualValue = round(originalCost * pct(safeResidualPercentage));
+    const depreciableBase = round(Math.max(originalCost - residualValue, 0));
+    const usefulLifeMonths = usefulLifeYears > 0 ? usefulLifeYears * 12 : 0;
+    const rawMonthlyDepreciation = usefulLifeMonths > 0 ? depreciableBase / usefulLifeMonths : 0;
+    const futureEstimatedDepreciation = round(Math.min(rawMonthlyDepreciation * projectedElapsedMonths, depreciableBase));
+    const automaticFutureSaleValue = round(Math.max(originalCost - futureEstimatedDepreciation, residualValue));
+    const manualEnabled = isManualFutureValueEnabled(input);
+    const manualValue = manualEnabled ? n(input.futureManualSaleValue) : 0;
+    return {
+      futureEvaluationDate,
+      projectedElapsedMonths,
+      projectedElapsedYears: round(projectedElapsedMonths / 12),
+      futureResidualValue: residualValue,
+      automaticFutureSaleValue,
+      futureManualSaleValueEnabled: manualEnabled,
+      futureManualSaleValue: manualValue,
+      futureManualReason: input.futureManualReason || "",
+      futureManualAuthorizedBy: input.futureManualAuthorizedBy || "",
+      futureManualAuthorizationDate: input.futureManualAuthorizationDate || "",
+      selectedFutureSaleValue: manualEnabled ? manualValue : automaticFutureSaleValue,
+      futureSaleDisclaimer: "Estimacion comercial interna; no garantiza el precio futuro de mercado",
+    };
+  }
+
   function recommendation(input, comparison) {
     if (input.operationType !== "used") return "No aplica comparativo de renta para equipo nuevo.";
     const hasProjection = n(input.expectedMonthlyRent) > 0 && n(input.evaluationMonths) > 0;
@@ -338,6 +411,10 @@
   function calculate(rawInput, configRows) {
     const input = { ...rawInput };
     const margins = resolveConfig(input, configRows);
+    if (input.operationType === "used") {
+      input.usefulLifeYears = margins.usefulLifeYears;
+      input.residualPercentage = margins.residualPercentage;
+    }
     input.__configRows = configRows;
     const prices = priceSet(input, margins);
     const proposedPrice = n(input.proposedPrice) > 0 ? n(input.proposedPrice) : prices.targetPrice;
@@ -357,8 +434,12 @@
 
     const effectiveMonthlyIncome = round(n(input.expectedMonthlyRent) * clamp(input.expectedOccupancy, 0, 100) / 100);
     const monthlyRentFlow = round(effectiveMonthlyIncome - n(input.expectedMonthlyMaintenance) - n(input.expectedMonthlyOtherCosts));
+    const futureSale = input.operationType === "used" ? futureSaleEstimate(input, margins) : {
+      selectedFutureSaleValue: n(input.estimatedSaleValueAfter),
+      automaticFutureSaleValue: n(input.estimatedSaleValueAfter),
+    };
     const futureRentFlow = round(monthlyRentFlow * n(input.evaluationMonths));
-    const keepRentingValue = round(futureRentFlow + n(input.estimatedSaleValueAfter));
+    const keepRentingValue = round(futureRentFlow + n(futureSale.selectedFutureSaleValue));
     const sellNowValue = round(finalPrice - (base.incrementalSaleCosts || 0));
     const difference = round(keepRentingValue - sellNowValue);
     const monthsToRecoverSale = monthlyRentFlow > 0 && sellNowValue > 0 ? round(sellNowValue / monthlyRentFlow) : null;
@@ -387,6 +468,7 @@
       historicalRentalResult,
       historicalRecoveryPct,
       totalRecoveryPct,
+      ...futureSale,
       comparison,
       trafficLight,
       marketPosition: marketPosition(input, finalPrice),

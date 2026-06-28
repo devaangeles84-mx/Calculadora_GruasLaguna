@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const { calculate, resolveConfig } = require("../src/calculations");
+const { buildClientQuoteModel, renderClientQuoteHtml } = require("../src/quote");
 
 const baseInput = {
   responsible: "Ventas",
@@ -99,11 +101,11 @@ const tests = [
     nearly(r.comparison.effectiveMonthlyIncome, 50000);
   }],
   ["Comparacion conviene vender", () => {
-    const r = calculate({ ...baseInput, operationType: "used", originalCost: 900000, bookValue: 500000, proposedPrice: 900000, expectedMonthlyRent: 20000, expectedOccupancy: 80, evaluationMonths: 6, estimatedSaleValueAfter: 500000 });
+    const r = calculate({ ...baseInput, operationType: "used", originalCost: 900000, bookValue: 500000, acquisitionDate: "2015-06-20", proposedPrice: 900000, expectedMonthlyRent: 20000, expectedOccupancy: 80, evaluationMonths: 6 });
     assert.equal(r.recommendation, "Financieramente favorece vender ahora.");
   }],
   ["Comparacion conviene rentar", () => {
-    const r = calculate({ ...baseInput, operationType: "used", originalCost: 900000, bookValue: 500000, proposedPrice: 650000, expectedMonthlyRent: 90000, expectedOccupancy: 90, evaluationMonths: 10, estimatedSaleValueAfter: 500000 });
+    const r = calculate({ ...baseInput, operationType: "used", originalCost: 900000, bookValue: 500000, acquisitionDate: "2025-06-20", proposedPrice: 650000, expectedMonthlyRent: 90000, expectedOccupancy: 90, evaluationMonths: 10 });
     assert.equal(r.recommendation, "Financieramente favorece mantener en renta.");
   }],
   ["Campos vacios y valores cero", () => {
@@ -203,6 +205,22 @@ const tests = [
     nearly(r.usefulLifeYears, 8);
     nearly(r.residualPercentage, 35);
   }],
+  ["Vida util y residual del formulario son ignorados si Configuracion define otros", () => {
+    const config = [
+      { equipmentType: "Grua", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, usefulLifeYears: 9, residualPercentage: 32, active: true },
+    ];
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      usefulLifeYears: 1,
+      residualPercentage: 1,
+    }, config);
+    nearly(r.usefulLifeYears, 9);
+    nearly(r.residualPercentage, 32);
+  }],
   ["Fecha de adquisicion futura es rechazada", () => {
     const r = calculate({
       ...baseInput,
@@ -227,6 +245,8 @@ const tests = [
       useManualBookValue: "on",
       manualBookValue: 720000,
       manualAdjustmentReason: "Autorizacion comercial por condicion excepcional",
+      manualAuthorizedBy: "Gerencia",
+      manualAuthorizationDate: "2026-06-20",
     });
     assert.equal(r.errors.length, 0);
     assert.equal(r.manualBookValueEnabled, true);
@@ -249,6 +269,35 @@ const tests = [
     });
     assert.ok(r.errors.some((error) => error.includes("motivo")));
   }],
+  ["Valor manual vacio o cero es rechazado", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      useManualBookValue: "on",
+      manualBookValue: 0,
+      manualAdjustmentReason: "Revision",
+      manualAuthorizedBy: "Gerencia",
+      manualAuthorizationDate: "2026-06-20",
+    });
+    assert.ok(r.errors.some((error) => error.includes("mayor que cero")));
+  }],
+  ["Ajuste manual sin autorizador o fecha es rechazado", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      useManualBookValue: "on",
+      manualBookValue: 700000,
+      manualAdjustmentReason: "Revision",
+    });
+    assert.ok(r.errors.some((error) => error.includes("autorizo")));
+    assert.ok(r.errors.some((error) => error.includes("fecha de autorizacion")));
+  }],
   ["Recalcula al cambiar fechas o parametros", () => {
     const base = {
       ...baseInput,
@@ -261,9 +310,166 @@ const tests = [
     };
     const fiveYears = calculate(base);
     const sixYears = calculate({ ...base, analysisDate: "2027-06-20" });
-    const differentResidual = calculate({ ...base, residualPercentage: 40 });
+    const differentResidual = calculate(base, [
+      { equipmentType: "Grua", operationType: "used", minimumPct: 18, targetPct: 25, highPct: 35, usefulLifeYears: 10, residualPercentage: 40, active: true },
+    ]);
     assert.ok(sixYears.automaticBookValue < fiveYears.automaticBookValue);
     assert.ok(differentResidual.automaticBookValue > fiveYears.automaticBookValue);
+  }],
+  ["Calcula valor automatico al final del periodo", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      evaluationMonths: 12,
+    });
+    assert.equal(r.futureEvaluationDate, "2027-06-20");
+    nearly(r.projectedElapsedMonths, 72);
+    nearly(r.automaticFutureSaleValue, 580000);
+    nearly(r.selectedFutureSaleValue, 580000);
+  }],
+  ["Proyeccion futura respeta valor residual", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2010-06-20",
+      analysisDate: "2026-06-20",
+      evaluationMonths: 24,
+    });
+    nearly(r.automaticFutureSaleValue, 300000);
+    nearly(r.selectedFutureSaleValue, 300000);
+  }],
+  ["Valor futuro manual autorizado se usa en comparativo", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      evaluationMonths: 12,
+      useManualFutureSaleValue: "on",
+      futureManualSaleValue: 750000,
+      futureManualReason: "Oferta esperada",
+      futureManualAuthorizedBy: "Gerencia",
+      futureManualAuthorizationDate: "2026-06-20",
+    });
+    nearly(r.selectedFutureSaleValue, 750000);
+    nearly(r.comparison.keepRentingValue, 750000);
+  }],
+  ["Mercado valida bajo promedio alto", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "new",
+      supplierCost: 1000000,
+      currency: "MXN",
+      exchangeRate: 1,
+      marketLow: 900000,
+      marketAverage: 850000,
+      marketHigh: 1100000,
+      marketSource: "Referencia",
+      marketDate: "2026-06-20",
+    });
+    assert.ok(r.errors.some((error) => error.includes("precio bajo")));
+  }],
+  ["Mercado exige fuente y fecha", () => {
+    const r = calculate({
+      ...baseInput,
+      operationType: "new",
+      supplierCost: 1000000,
+      currency: "MXN",
+      exchangeRate: 1,
+      marketLow: 900000,
+      marketAverage: 1000000,
+      marketHigh: 1100000,
+    });
+    assert.ok(r.errors.some((error) => error.includes("fuente")));
+    assert.ok(r.errors.some((error) => error.includes("fecha de consulta")));
+  }],
+  ["Cotizacion para equipo nuevo muestra solo precio final", () => {
+    const result = calculate({ ...baseInput, operationType: "new", supplierCost: 1000000, currency: "MXN", exchangeRate: 1, proposedPrice: 1250000 });
+    const model = buildClientQuoteModel({
+      ...baseInput,
+      operationType: "new",
+      folio: "GL-20260620-0001",
+      quoteDate: "2026-06-20",
+      quoteValidUntil: "2026-06-30",
+      clientName: "Cliente SA",
+      clientContactName: "Compras",
+      clientPhone: "8710000000",
+      clientEmail: "cliente@example.com",
+      clientDescription: "Equipo nuevo listo para entrega.",
+      paymentTerms: "Contado",
+      deliveryEstimate: "Torreon",
+      clientWarrantyTerms: "Segun poliza",
+      quoteValidityText: "10 dias",
+    }, result);
+    assert.equal(model.quoteNumber, "COT-GL-20260620-0001");
+    assert.equal(model.finalPrice, result.finalPrice);
+    assert.equal(model.operationType, "Equipo nuevo");
+  }],
+  ["Cotizacion para seminuevo incluye horas y condicion", () => {
+    const result = calculate({
+      ...baseInput,
+      operationType: "used",
+      originalCost: 1000000,
+      acquisitionDate: "2021-06-20",
+      analysisDate: "2026-06-20",
+      proposedPrice: 800000,
+    });
+    const model = buildClientQuoteModel({
+      ...baseInput,
+      operationType: "used",
+      currentHours: 1200,
+      condition: "Buena",
+      clientName: "Cliente",
+    }, result);
+    assert.equal(model.quoteNumber, "BORRADOR - SIN FOLIO");
+    assert.equal(model.currentHours, "1200");
+    assert.equal(model.condition, "Buena");
+    assert.equal(model.finalPrice, result.finalPrice);
+  }],
+  ["Cotizacion no contiene claves ni valores sensibles", () => {
+    const result = calculate({ ...baseInput, operationType: "new", supplierCost: 1000000, currency: "MXN", exchangeRate: 1, proposedPrice: 1250000 });
+    const model = buildClientQuoteModel({
+      ...baseInput,
+      operationType: "new",
+      folio: "GL-1",
+      clientName: "Cliente",
+      notes: "OBSERVACION_INTERNA_SECRETA",
+      supplierCost: 1000000,
+      economicBase: 999999,
+      manualAdjustmentReason: "MOTIVO_INTERNO",
+    }, { ...result, economicBase: 999999, expectedProfit: 12345 });
+    const json = JSON.stringify(model);
+    const html = renderClientQuoteHtml(model);
+    const forbidden = [
+      "supplierCost", "economicBase", "expectedProfit", "manualAdjustmentReason",
+      "OBSERVACION_INTERNA_SECRETA", "MOTIVO_INTERNO", "999999", "12345",
+      "Precio minimo", "Semaforo", "Depreciacion", "Valor en libros",
+    ];
+    forbidden.forEach((term) => {
+      assert.equal(json.includes(term), false, `modelo contiene ${term}`);
+      assert.equal(html.includes(term), false, `html contiene ${term}`);
+    });
+  }],
+  ["Impresion interna conserva boton y cotizacion existe", () => {
+    const html = fs.readFileSync("index.html", "utf8");
+    assert.ok(html.includes("Imprimir análisis interno"));
+    assert.ok(html.includes("Cotización para cliente"));
+  }],
+  ["Restauracion de nuevos campos desde historial conserva entradas", () => {
+    const input = {
+      quoteDate: "2026-06-20",
+      clientName: "Cliente",
+      useManualFutureSaleValue: "on",
+      futureManualSaleValue: 700000,
+      futureManualReason: "Autorizado",
+    };
+    const restored = Object.fromEntries(Object.entries(input));
+    assert.deepEqual(restored, input);
   }],
   ["Error de comunicacion Apps Script verificable", async () => {
     const api = require("../netlify/functions/api");
